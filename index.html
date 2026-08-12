@@ -1,7 +1,96 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Coins, AlertTriangle, TrendingUp, Award, Lock, Zap, ArrowUpCircle, Sparkles, RefreshCw } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>The Fermentary</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+<style>
+  html, body { margin: 0; padding: 0; background: #1B140D; }
+  * { box-sizing: border-box; }
+  #root { min-height: 100vh; }
+  .fermentary-msg { padding: 40px 20px; text-align: center; color: #E8DCC4; font-family: -apple-system, Inter, sans-serif; max-width: 420px; margin: 40px auto; }
+  .fermentary-msg h2 { margin-bottom: 8px; }
+  .fermentary-msg p { color: #A6957A; font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div id="root"><div class="fermentary-msg"><h2>Loading The Fermentary…</h2></div></div>
 
-const FONT_LINK_ID = 'fermentary-fonts';
+<script>
+// Try several CDNs in turn, since some networks (school/work/public wifi)
+// block one but not another. Whichever loads first wins.
+function loadScript(url) {
+  return new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = url;
+    s.onload = function () { resolve(); };
+    s.onerror = function () { reject(new Error('failed: ' + url)); };
+    document.head.appendChild(s);
+  });
+}
+function loadFirstThatWorks(urls) {
+  var attempt = function (i) {
+    if (i >= urls.length) return Promise.reject(new Error('all sources failed'));
+    return loadScript(urls[i]).catch(function () { return attempt(i + 1); });
+  };
+  return attempt(0);
+}
+
+var REACT_SOURCES = [
+  'https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js',
+  'https://unpkg.com/react@18.3.1/umd/react.production.min.js',
+];
+var REACTDOM_SOURCES = [
+  'https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js',
+  'https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js',
+];
+
+loadFirstThatWorks(REACT_SOURCES)
+  .then(function () { return loadFirstThatWorks(REACTDOM_SOURCES); })
+  .then(function () {
+    if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') throw new Error('libs missing after load');
+    runFermentary();
+  })
+  .catch(function () {
+    document.getElementById('root').innerHTML =
+      '<div class="fermentary-msg"><h2>Couldn\'t load</h2>' +
+      '<p>This game loads two small files from the internet the first time it opens, and none of the ' +
+      'usual sources (jsDelivr, cdnjs, unpkg) got through. You may be fully offline, or on a network that ' +
+      'blocks JavaScript CDNs entirely. Try a different network, such as a personal hotspot.</p></div>';
+  });</script>
+
+<script>
+// No JSX / no Babel here on purpose — this app is written directly with
+// React.createElement so it has zero build-time dependency and nothing to
+// fail at runtime beyond React itself loading.
+function runFermentary() {
+const { useState, useEffect, useRef, useCallback } = React;
+const h = React.createElement;
+
+// --- Storage: uses Claude's artifact storage if present (window.storage),
+// otherwise falls back to localStorage so this works as a standalone file. ---
+const hasClaudeStorage = typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+const storage = {
+  async get(key) {
+    if (hasClaudeStorage) {
+      try { return await window.storage.get(key, false); } catch (e) { return null; }
+    }
+    try {
+      const v = localStorage.getItem(key);
+      return v !== null ? { value: v } : null;
+    } catch (e) { return null; }
+  },
+  async set(key, value) {
+    if (hasClaudeStorage) {
+      try { return await window.storage.set(key, value, false); } catch (e) { return null; }
+    }
+    try { localStorage.setItem(key, value); return { value }; } catch (e) { return null; }
+  },
+};
+
 const SAVE_KEY = 'fermentary-save-v3';
 
 // Each beverage earns cash every second on its own. "Proficiency" is a level
@@ -23,9 +112,8 @@ const STARTING_DEBT = 350;
 const STARTING_CASH = 60;
 const TICK_MS = 200;
 
-// --- Prestige tree ---------------------------------------------------------
-const RATE_EFFECT_PER_RANK = 0.10;   // +10% beverage rate per rank
-const COST_EFFECT_PER_RANK = 0.08;   // -8% beverage cost per rank
+const RATE_EFFECT_PER_RANK = 0.10;
+const COST_EFFECT_PER_RANK = 0.08;
 const NODE_MAX_RANK = 5;
 const NODE_COST_GROWTH = 1.25;
 const PRESTIGE_POINTS_BASE = 4;
@@ -60,7 +148,7 @@ const PRESTIGE_TREE = [
   },
 ];
 const NODE_BY_ID = {};
-PRESTIGE_TREE.forEach(t => t.nodes.forEach(n => { NODE_BY_ID[n.id] = { ...n, tier: t.tier }; }));
+PRESTIGE_TREE.forEach(t => t.nodes.forEach(n => { NODE_BY_ID[n.id] = Object.assign({}, n, { tier: t.tier }); }));
 
 function defaultRunState() {
   const beverages = {};
@@ -69,24 +157,21 @@ function defaultRunState() {
 }
 
 function defaultState() {
-  return {
-    ...defaultRunState(),
+  return Object.assign({}, defaultRunState(), {
     totalEarned: 0,
     lastSeen: Date.now(),
     prestige: 0,
     prestigePoints: 0,
     prestigeSpent: 0,
     prestigeUpgrades: {},
-  };
+  });
 }
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function costLabel(n) { return n <= 0 ? 'Free' : fmtMoney(n); }
-
 function rankOf(state, nodeId) { return state.prestigeUpgrades[nodeId] || 0; }
-
 function rateMultiplier(bevId, state) {
   const rank = rankOf(state, `${bevId}_rate`);
   return 1 + rank * RATE_EFFECT_PER_RANK;
@@ -109,7 +194,7 @@ function upgradeCostOf(bev, level, state) {
   return Math.ceil(effectiveUpgradeBaseCost(bev, state) * Math.pow(bev.growth, Math.max(0, level - 1)));
 }
 function totalRateOf(state) {
-  return BEVERAGES.reduce((sum, b) => sum + rateOf(b, state.beverages[b.id]?.level || 0, state), 0);
+  return BEVERAGES.reduce((sum, b) => sum + rateOf(b, (state.beverages[b.id] && state.beverages[b.id].level) || 0, state), 0);
 }
 function nodeCostAt(node, rank) {
   return Math.ceil(node.baseCost * Math.pow(NODE_COST_GROWTH, rank));
@@ -121,7 +206,22 @@ function debtForRun(newLevel) {
   return Math.round(STARTING_DEBT * Math.pow(DEBT_GROWTH_PER_PRESTIGE, newLevel));
 }
 
-export default function Fermentary() {
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error('Fermentary render error:', error, info); }
+  render() {
+    if (this.state.error) {
+      return h('div', { className: 'fermentary-msg' },
+        h('h2', null, 'Something went wrong'),
+        h('p', null, String((this.state.error && this.state.error.message) || this.state.error))
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function Fermentary() {
   const [state, setState] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
@@ -130,24 +230,14 @@ export default function Fermentary() {
   const stateRef = useRef(null);
   stateRef.current = state;
 
-  const showToast = useCallback((msg, tone = 'neutral') => setToast({ msg, tone, id: Math.random() }), []);
-
-  useEffect(() => {
-    if (!document.getElementById(FONT_LINK_ID)) {
-      const link = document.createElement('link');
-      link.id = FONT_LINK_ID;
-      link.rel = 'stylesheet';
-      link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap';
-      document.head.appendChild(link);
-    }
-  }, []);
+  const showToast = useCallback((msg, tone) => setToast({ msg, tone: tone || 'neutral', id: Math.random() }), []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       let loadedState = null;
       try {
-        const res = await window.storage.get(SAVE_KEY, false);
+        const res = await storage.get(SAVE_KEY);
         if (res && res.value) loadedState = JSON.parse(res.value);
       } catch (e) { loadedState = null; }
 
@@ -159,7 +249,7 @@ export default function Fermentary() {
       const earned = rate * elapsedSec;
       const debt = base.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, elapsedSec);
 
-      const next = { ...base, cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs };
+      const next = Object.assign({}, base, { cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs });
       if (!cancelled) {
         setState(next);
         setLoaded(true);
@@ -180,7 +270,7 @@ export default function Fermentary() {
         const rate = totalRateOf(prev);
         const income = rate * dt;
         const debt = prev.debt > 0 ? prev.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, dt) : 0;
-        return { ...prev, cash: prev.cash + income, totalEarned: prev.totalEarned + income, debt };
+        return Object.assign({}, prev, { cash: prev.cash + income, totalEarned: prev.totalEarned + income, debt });
       });
     }, TICK_MS);
     return () => clearInterval(id);
@@ -190,19 +280,25 @@ export default function Fermentary() {
     if (!loaded) return;
     const id = setInterval(() => {
       if (stateRef.current) {
-        const toSave = { ...stateRef.current, lastSeen: Date.now() };
-        window.storage.set(SAVE_KEY, JSON.stringify(toSave), false).catch(() => {});
+        const toSave = Object.assign({}, stateRef.current, { lastSeen: Date.now() });
+        storage.set(SAVE_KEY, JSON.stringify(toSave));
       }
     }, 4000);
     return () => clearInterval(id);
   }, [loaded]);
 
+  useEffect(() => {
+    const handler = () => {
+      if (stateRef.current) {
+        try { localStorage.setItem(SAVE_KEY, JSON.stringify(Object.assign({}, stateRef.current, { lastSeen: Date.now() }))); } catch (e) {}
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
   if (!loaded || !state) {
-    return (
-      <div style={{ minHeight: '100vh', background: '#241A12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9BBA3', fontFamily: 'Inter, sans-serif' }}>
-        Uncorking the ledger…
-      </div>
-    );
+    return h('div', { style: { minHeight: '100vh', background: '#241A12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9BBA3', fontFamily: 'Inter, sans-serif' } }, 'Uncorking the ledger…');
   }
 
   const totalPaid = state.totalPaid;
@@ -214,9 +310,9 @@ export default function Fermentary() {
     setState(prev => {
       const cost = effectiveUnlockCost(bev, prev);
       if (prev.cash < cost) { showToast('Not enough cash to unlock that.', 'warn'); return prev; }
-      const beverages = { ...prev.beverages, [id]: { ...prev.beverages[id], level: 1 } };
+      const beverages = Object.assign({}, prev.beverages, { [id]: Object.assign({}, prev.beverages[id], { level: 1 }) });
       showToast(`${bev.name} is now brewing.`, 'good');
-      return { ...prev, cash: prev.cash - cost, beverages };
+      return Object.assign({}, prev, { cash: prev.cash - cost, beverages });
     });
   }
 
@@ -227,8 +323,8 @@ export default function Fermentary() {
       if (!cur || cur.level < 1) return prev;
       const cost = upgradeCostOf(bev, cur.level, prev);
       if (prev.cash < cost) { showToast('Not enough cash for that upgrade.', 'warn'); return prev; }
-      const beverages = { ...prev.beverages, [id]: { ...cur, level: cur.level + 1 } };
-      return { ...prev, cash: prev.cash - cost, beverages };
+      const beverages = Object.assign({}, prev.beverages, { [id]: Object.assign({}, cur, { level: cur.level + 1 }) });
+      return Object.assign({}, prev, { cash: prev.cash - cost, beverages });
     });
   }
 
@@ -239,8 +335,8 @@ export default function Fermentary() {
       if (!cur || cur.level < 1) return prev;
       if (Date.now() - (cur.lastTap || 0) < TAP_COOLDOWN) return prev;
       const bonus = rateOf(bev, cur.level, prev) * TAP_SECONDS_WORTH;
-      const beverages = { ...prev.beverages, [id]: { ...cur, lastTap: Date.now() } };
-      return { ...prev, cash: prev.cash + bonus, totalEarned: prev.totalEarned + bonus, beverages };
+      const beverages = Object.assign({}, prev.beverages, { [id]: Object.assign({}, cur, { lastTap: Date.now() }) });
+      return Object.assign({}, prev, { cash: prev.cash + bonus, totalEarned: prev.totalEarned + bonus, beverages });
     });
   }
 
@@ -248,7 +344,7 @@ export default function Fermentary() {
     setState(prev => {
       const pay = Math.min(amount, prev.cash, prev.debt);
       if (pay <= 0) return prev;
-      return { ...prev, cash: prev.cash - pay, debt: prev.debt - pay, totalPaid: prev.totalPaid + pay };
+      return Object.assign({}, prev, { cash: prev.cash - pay, debt: prev.debt - pay, totalPaid: prev.totalPaid + pay });
     });
   }
 
@@ -258,9 +354,7 @@ export default function Fermentary() {
       const newLevel = prev.prestige + 1;
       const pointsGained = pointsForPrestige(prev.prestige);
       showToast(`Prestiged to generation ${newLevel + 1} — +${pointsGained} prestige points.`, 'good');
-      return {
-        ...prev,
-        ...defaultRunState(),
+      return Object.assign({}, prev, defaultRunState(), {
         debt: debtForRun(newLevel),
         totalEarned: prev.totalEarned,
         lastSeen: Date.now(),
@@ -268,7 +362,7 @@ export default function Fermentary() {
         prestigePoints: prev.prestigePoints + pointsGained,
         prestigeSpent: prev.prestigeSpent,
         prestigeUpgrades: prev.prestigeUpgrades,
-      };
+      });
     });
     setConfirmingPrestige(false);
   }
@@ -280,158 +374,137 @@ export default function Fermentary() {
       if (rank >= NODE_MAX_RANK) return prev;
       const cost = nodeCostAt(node, rank);
       if (prev.prestigePoints < cost) { showToast('Not enough prestige points.', 'warn'); return prev; }
-      return {
-        ...prev,
+      return Object.assign({}, prev, {
         prestigePoints: prev.prestigePoints - cost,
         prestigeSpent: prev.prestigeSpent + cost,
-        prestigeUpgrades: { ...prev.prestigeUpgrades, [nodeId]: rank + 1 },
-      };
+        prestigeUpgrades: Object.assign({}, prev.prestigeUpgrades, { [nodeId]: rank + 1 }),
+      });
     });
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #241A12 0%, #1B140D 100%)', fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 }}>
-      <style>{`
-        @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
-        .btn { transition: transform 0.12s ease, filter 0.12s ease; }
-        .btn:active { transform: scale(0.96); }
-        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .btn:not(:disabled):hover { filter: brightness(1.12); }
-        .tap-card { transition: transform 0.1s ease; cursor: pointer; }
-        .tap-card:active { transform: scale(0.985); }
-      `}</style>
+  const payBtnStyle = { flex: 1, background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer' };
 
-      {toast && (
-        <div key={toast.id} style={{
-          position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
-          background: toast.tone === 'good' ? '#3C4F35' : toast.tone === 'warn' ? '#5C2B2B' : '#332619',
-          border: `1px solid ${toast.tone === 'good' ? '#6B8A5E' : toast.tone === 'warn' ? '#A13D3D' : '#5A4630'}`,
-          color: '#EDE3D0', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif',
-          animation: 'toastIn 0.25s ease', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90vw', textAlign: 'center'
-        }}
-          onAnimationEnd={() => { clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3200); }}
-        >
-          {toast.msg}
-        </div>
-      )}
+  return h('div', { style: { minHeight: '100vh', background: 'linear-gradient(180deg, #241A12 0%, #1B140D 100%)', fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 } },
+    h('style', null, `
+      @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
+      .btn { transition: transform 0.12s ease, filter 0.12s ease; }
+      .btn:active { transform: scale(0.96); }
+      .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .btn:not(:disabled):hover { filter: brightness(1.12); }
+      .tap-card { transition: transform 0.1s ease; cursor: pointer; }
+      .tap-card:active { transform: scale(0.985); }
+    `),
+    toast && h('div', {
+      key: toast.id,
+      style: {
+        position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
+        background: toast.tone === 'good' ? '#3C4F35' : toast.tone === 'warn' ? '#5C2B2B' : '#332619',
+        border: `1px solid ${toast.tone === 'good' ? '#6B8A5E' : toast.tone === 'warn' ? '#A13D3D' : '#5A4630'}`,
+        color: '#EDE3D0', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif',
+        animation: 'toastIn 0.25s ease', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90vw', textAlign: 'center',
+      },
+      onAnimationEnd: () => { clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3200); },
+    }, toast.msg),
 
-      <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #3A2C1D' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 }}>The Fermentary</h1>
-          <span style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace' }}>gen. {state.prestige + 1}</span>
-        </div>
-        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#A6957A' }}>Every pour adds up — even when you're not watching.</p>
-      </div>
+    h('div', { style: { padding: '20px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
+      h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10 } },
+        h('h1', { style: { fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 } }, 'The Fermentary'),
+        h('span', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace' } }, `gen. ${state.prestige + 1}`)
+      ),
+      h('p', { style: { margin: '4px 0 0', fontSize: 12.5, color: '#A6957A' } }, "Every pour adds up — even when you're not watching.")
+    ),
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' }}>
-        <LedgerCard icon={<Coins size={15} />} label="Cash" value={fmtMoney(state.cash)} color="#E0A93E" />
-        <LedgerCard icon={<AlertTriangle size={15} />} label="Debt" value={fmtMoney(state.debt)} color={debtCleared ? '#6B8A5E' : '#C15C5C'} bleed={Math.min(1, state.debt / debtForRun(state.prestige))} />
-        <LedgerCard icon={<TrendingUp size={15} />} label="Income" value={`${fmtMoney(totalRate)}/sec`} color="#9CC28A" />
-        <LedgerCard icon={<Award size={15} />} label="Lifetime earned" value={fmtMoney(state.totalEarned)} color="#B49BD1" />
-      </div>
+    h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' } },
+      h(LedgerCard, { icon: '💰', label: 'Cash', value: fmtMoney(state.cash), color: '#E0A93E' }),
+      h(LedgerCard, { icon: '⚠️', label: 'Debt', value: fmtMoney(state.debt), color: debtCleared ? '#6B8A5E' : '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
+      h(LedgerCard, { icon: '📈', label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
+      h(LedgerCard, { icon: '🏆', label: 'Lifetime earned', value: fmtMoney(state.totalEarned), color: '#B49BD1' })
+    ),
 
-      <div style={{ padding: '0 16px 16px', display: 'flex', gap: 8 }}>
-        <button className="btn" disabled={state.cash <= 0 || debtCleared} onClick={() => payDebt(Math.min(state.cash, 50))} style={payBtnStyle}>Pay $50</button>
-        <button className="btn" disabled={state.cash <= 0 || debtCleared} onClick={() => payDebt(state.cash)} style={{ ...payBtnStyle, background: '#4A3A24', borderColor: '#6B5636' }}>Pay all cash</button>
-      </div>
+    h('div', { style: { padding: '0 16px 16px', display: 'flex', gap: 8 } },
+      h('button', { className: 'btn', disabled: state.cash <= 0 || debtCleared, onClick: () => payDebt(Math.min(state.cash, 50)), style: payBtnStyle }, 'Pay $50'),
+      h('button', { className: 'btn', disabled: state.cash <= 0 || debtCleared, onClick: () => payDebt(state.cash), style: Object.assign({}, payBtnStyle, { background: '#4A3A24', borderColor: '#6B5636' }) }, 'Pay all cash')
+    ),
 
-      {/* Prestige banner */}
-      <div style={{ margin: '0 16px 16px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#C9B8E8', fontSize: 12, fontWeight: 600 }}>
-            <Sparkles size={14} /> Prestige · {state.prestigePoints} pts available
-          </div>
-          <span style={{ fontSize: 10.5, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' }}>gen. {state.prestige + 1}</span>
-        </div>
+    h('div', { style: { margin: '0 16px 16px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: 12 } },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, color: '#C9B8E8', fontSize: 12, fontWeight: 600 } },
+          h('span', { style: { fontSize: 14 } }, '✨'), ` Prestige · ${state.prestigePoints} pts available`
+        ),
+        h('span', { style: { fontSize: 10.5, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' } }, `gen. ${state.prestige + 1}`)
+      ),
+      !debtCleared && h('div', { style: { fontSize: 11, color: '#8A7CA0', marginTop: 6 } }, 'Clear your debt to prestige — reset the run, take on more debt next time, and earn points to spend below, permanently.'),
+      debtCleared && !confirmingPrestige && h('button', {
+        className: 'btn', onClick: () => setConfirmingPrestige(true),
+        style: { marginTop: 8, width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+      }, h('span', { style: { fontSize: 13 } }, '🔄'), ` Prestige now — earn ${pointsForPrestige(state.prestige)} points`),
+      debtCleared && confirmingPrestige && h('div', { style: { marginTop: 8 } },
+        h('div', { style: { fontSize: 11, color: '#C9B8E8', marginBottom: 8 } }, `This resets cash, debt, and beverage levels. Next run starts at ${fmtMoney(debtForRun(state.prestige + 1))} debt. Prestige Tree upgrades are never lost.`),
+        h('div', { style: { display: 'flex', gap: 8 } },
+          h('button', { className: 'btn', onClick: doPrestige, style: { flex: 1, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '8px 0', color: '#E5D9FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' } }, 'Confirm prestige'),
+          h('button', { className: 'btn', onClick: () => setConfirmingPrestige(false), style: { flex: 1, background: 'none', border: '1px solid #4A3D5C', borderRadius: 8, padding: '8px 0', color: '#8A7CA0', fontSize: 12, cursor: 'pointer' } }, 'Cancel')
+        )
+      )
+    ),
 
-        {!debtCleared && (
-          <div style={{ fontSize: 11, color: '#8A7CA0', marginTop: 6 }}>Clear your debt to prestige — reset the run, take on more debt next time, and earn points to spend below, permanently.</div>
-        )}
+    h('div', { style: { padding: '0 16px' } },
+      h(SectionLabel, { text: 'Beverages' }),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        BEVERAGES.map(b => {
+          const unlockedTank = totalPaid >= b.unlockDebtPaid;
+          const cur = state.beverages[b.id];
+          return h(BeverageCard, {
+            key: b.id, bev: b, bevState: cur, debtUnlocked: unlockedTank, cash: state.cash,
+            rate: rateOf(b, cur.level, state),
+            nextRate: rateOf(b, cur.level + 1, state),
+            nextCost: cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state),
+            onUnlock: unlockBeverage, onUpgrade: upgradeBeverage, onTap: tapBeverage,
+          });
+        })
+      )
+    ),
 
-        {debtCleared && !confirmingPrestige && (
-          <button className="btn" onClick={() => setConfirmingPrestige(true)} style={{ marginTop: 8, width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            <RefreshCw size={13} /> Prestige now — earn {pointsForPrestige(state.prestige)} points
-          </button>
-        )}
+    h('div', { style: { padding: '20px 16px 0' } },
+      h(SectionLabel, { text: 'Prestige tree' }),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+        PRESTIGE_TREE.map(tier => h(PrestigeTierBlock, { key: tier.tier, tier: tier, state: state, onBuy: buyPrestigeNode }))
+      )
+    ),
 
-        {debtCleared && confirmingPrestige && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 11, color: '#C9B8E8', marginBottom: 8 }}>
-              This resets cash, debt, and beverage levels. Next run starts at {fmtMoney(debtForRun(state.prestige + 1))} debt. Prestige Tree upgrades are never lost.
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn" onClick={doPrestige} style={{ flex: 1, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '8px 0', color: '#E5D9FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Confirm prestige</button>
-              <button className="btn" onClick={() => setConfirmingPrestige(false)} style={{ flex: 1, background: 'none', border: '1px solid #4A3D5C', borderRadius: 8, padding: '8px 0', color: '#8A7CA0', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ padding: '0 16px' }}>
-        <SectionLabel text="Beverages" />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {BEVERAGES.map(b => {
-            const unlockedTank = totalPaid >= b.unlockDebtPaid;
-            const cur = state.beverages[b.id];
-            return (
-              <BeverageCard
-                key={b.id} bev={b} bevState={cur} debtUnlocked={unlockedTank} cash={state.cash}
-                rate={rateOf(b, cur.level, state)}
-                nextRate={rateOf(b, cur.level + 1, state)}
-                nextCost={cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state)}
-                onUnlock={unlockBeverage} onUpgrade={upgradeBeverage} onTap={tapBeverage}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ padding: '20px 16px 0' }}>
-        <SectionLabel text="Prestige tree" />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {PRESTIGE_TREE.map(tier => (
-            <PrestigeTierBlock key={tier.tier} tier={tier} state={state} onBuy={buyPrestigeNode} />
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: '18px 16px 0', fontSize: 11, color: '#6B5D48', textAlign: 'center' }}>
-        Progress saves automatically. Tap a brewing beverage for a quick bonus — it's worth more than just letting it run.
-      </div>
-    </div>
+    h('div', { style: { padding: '18px 16px 0', fontSize: 11, color: '#6B5D48', textAlign: 'center' } },
+      "Progress saves automatically in this browser. Tap a brewing beverage for a quick bonus — it's worth more than just letting it run."
+    )
   );
 }
 
-function SectionLabel({ text }) {
-  return <div style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' }}>{text}</div>;
+function SectionLabel(props) {
+  return h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
 }
 
-const payBtnStyle = { flex: 1, background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer' };
-
-function LedgerCard({ icon, label, value, color, bleed }) {
-  return (
-    <div style={{ position: 'relative', background: '#EDE3D0', borderRadius: 8, padding: '10px 12px', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' }}>
-      {bleed !== undefined && (
-        <div style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: `${bleed * 100}%`, background: 'linear-gradient(180deg, rgba(161,61,61,0.05), rgba(161,61,61,0.22))', pointerEvents: 'none' }} />
-      )}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, color: '#7A6A4E', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{icon} {label}</div>
-      <div style={{ position: 'relative', fontFamily: 'JetBrains Mono, monospace', fontSize: 17, fontWeight: 700, color: '#2B2018', marginTop: 3 }}><span style={{ color }}>{value}</span></div>
-    </div>
+function LedgerCard(props) {
+  const { icon, label, value, color, bleed } = props;
+  return h('div', { style: { position: 'relative', background: '#EDE3D0', borderRadius: 8, padding: '10px 12px', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' } },
+    bleed !== undefined && h('div', { style: { position: 'absolute', left: 0, bottom: 0, width: '100%', height: `${bleed * 100}%`, background: 'linear-gradient(180deg, rgba(161,61,61,0.05), rgba(161,61,61,0.22))', pointerEvents: 'none' } }),
+    h('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', gap: 6, color: '#7A6A4E', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 } },
+      h('span', { style: { fontSize: 13 } }, icon), ' ', label
+    ),
+    h('div', { style: { position: 'relative', fontFamily: 'JetBrains Mono, monospace', fontSize: 17, fontWeight: 700, color: '#2B2018', marginTop: 3 } },
+      h('span', { style: { color: color } }, value)
+    )
   );
 }
 
-function BeverageCard({ bev, bevState, debtUnlocked, cash, rate, nextRate, nextCost, onUnlock, onUpgrade, onTap }) {
+function BeverageCard(props) {
+  const { bev, bevState, debtUnlocked, cash, rate, nextRate, nextCost, onUnlock, onUpgrade, onTap } = props;
   const [pops, setPops] = useState([]);
   const owned = bevState.level > 0;
   const tapReady = owned && Date.now() - (bevState.lastTap || 0) >= TAP_COOLDOWN;
 
   if (!debtUnlocked) {
-    return (
-      <div style={{ background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' }}>
-        <Lock size={16} />
-        <div style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>{bev.name} — pay down ${bev.unlockDebtPaid} total to unlock</div>
-      </div>
+    return h('div', { style: { background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' } },
+      h('span', { style: { fontSize: 16 } }, '🔒'),
+      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `${bev.name} — pay down $${bev.unlockDebtPaid} total to unlock`)
     );
   }
 
@@ -444,94 +517,82 @@ function BeverageCard({ bev, bevState, debtUnlocked, cash, rate, nextRate, nextC
     onTap(bev.id);
   }
 
-  return (
-    <div
-      className={owned ? 'tap-card' : ''}
-      onClick={owned ? handleTap : undefined}
-      style={{ position: 'relative', background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 10, padding: 12, overflow: 'hidden' }}
-    >
-      {pops.map(p => (
-        <div key={p.id} style={{ position: 'absolute', top: 10, right: 14, fontSize: 13, fontWeight: 700, color: '#E0A93E', fontFamily: 'JetBrains Mono, monospace', animation: 'floatUp 0.7s ease forwards', pointerEvents: 'none' }}>{p.text}</div>
-      ))}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' }}>{bev.name}</div>
-          {owned ? (
-            <div style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>Proficiency Lv.{bevState.level} · {fmtMoney(rate)}/sec</div>
-          ) : (
-            <div style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>Not brewing yet · base {fmtMoney(bev.baseRate)}/sec</div>
-          )}
-        </div>
-        {owned && (
-          <div style={{ fontSize: 9.5, color: tapReady ? '#E0A93E' : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
-            <Zap size={11} /> {tapReady ? 'tap for bonus' : 'cooling down'}
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        {owned ? (
-          <button
-            className="btn"
-            disabled={cash < nextCost}
-            onClick={(e) => { e.stopPropagation(); onUpgrade(bev.id); }}
-            style={{ width: '100%', background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 7, padding: '8px 0', color: '#E0A93E', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
-          >
-            <ArrowUpCircle size={13} /> Improve proficiency — {fmtMoney(nextCost)} → {fmtMoney(nextRate)}/sec
-          </button>
-        ) : (
-          <button
-            className="btn"
-            disabled={cash < nextCost}
-            onClick={(e) => { e.stopPropagation(); onUnlock(bev.id); }}
-            style={{ width: '100%', background: '#2F3A2C', border: '1px solid #4E6247', borderRadius: 7, padding: '8px 0', color: '#9CC28A', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-          >
-            Start brewing — {costLabel(nextCost)}
-          </button>
-        )}
-      </div>
-    </div>
+  return h('div', {
+    className: owned ? 'tap-card' : '',
+    onClick: owned ? handleTap : undefined,
+    style: { position: 'relative', background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 10, padding: 12, overflow: 'hidden' },
+  },
+    pops.map(p => h('div', { key: p.id, style: { position: 'absolute', top: 10, right: 14, fontSize: 13, fontWeight: 700, color: '#E0A93E', fontFamily: 'JetBrains Mono, monospace', animation: 'floatUp 0.7s ease forwards', pointerEvents: 'none' } }, p.text)),
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
+      h('div', null,
+        h('div', { style: { fontSize: 14, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, bev.name),
+        owned
+          ? h('div', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Proficiency Lv.${bevState.level} · ${fmtMoney(rate)}/sec`)
+          : h('div', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Not brewing yet · base ${fmtMoney(bev.baseRate)}/sec`)
+      ),
+      owned && h('div', { style: { fontSize: 9.5, color: tapReady ? '#E0A93E' : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } },
+        h('span', { style: { fontSize: 11 } }, '⚡'), ' ', tapReady ? 'tap for bonus' : 'cooling down'
+      )
+    ),
+    h('div', { style: { marginTop: 10 } },
+      owned
+        ? h('button', {
+            className: 'btn', disabled: cash < nextCost,
+            onClick: (e) => { e.stopPropagation(); onUpgrade(bev.id); },
+            style: { width: '100%', background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 7, padding: '8px 0', color: '#E0A93E', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 },
+          }, h('span', { style: { fontSize: 13 } }, '⬆️'), ` Improve proficiency — ${fmtMoney(nextCost)} → ${fmtMoney(nextRate)}/sec`)
+        : h('button', {
+            className: 'btn', disabled: cash < nextCost,
+            onClick: (e) => { e.stopPropagation(); onUnlock(bev.id); },
+            style: { width: '100%', background: '#2F3A2C', border: '1px solid #4E6247', borderRadius: 7, padding: '8px 0', color: '#9CC28A', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+          }, `Start brewing — ${costLabel(nextCost)}`)
+    )
   );
 }
 
-function PrestigeTierBlock({ tier, state, onBuy }) {
+function PrestigeTierBlock(props) {
+  const { tier, state, onBuy } = props;
   const tierUnlocked = state.prestigeSpent >= tier.requiredSpent;
-  return (
-    <div style={{ background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12, opacity: tierUnlocked ? 1 : 0.6 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tierUnlocked ? 8 : 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif' }}>{tier.label}</div>
-        {!tierUnlocked && <span style={{ fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 3 }}><Lock size={10} /> spend {tier.requiredSpent} pts to unlock</span>}
-      </div>
-      {tierUnlocked && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {tier.nodes.map(node => {
-            const rank = rankOf(state, node.id);
-            const maxed = rank >= NODE_MAX_RANK;
-            const cost = maxed ? null : nodeCostAt(node, rank);
-            const bev = BEVERAGES.find(b => b.id === node.beverageId);
-            const desc = node.type === 'rate'
-              ? `+${Math.round(RATE_EFFECT_PER_RANK * 100)}% ${bev.name} rate / rank`
-              : `-${Math.round(COST_EFFECT_PER_RANK * 100)}% ${bev.name} costs / rank`;
-            return (
-              <div key={node.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#2A2233', borderRadius: 7, padding: '7px 9px' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: '#E5D9FF' }}>{node.name} <span style={{ color: '#8A7CA0', fontWeight: 400 }}>Lv.{rank}/{NODE_MAX_RANK}</span></div>
-                  <div style={{ fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' }}>{desc}</div>
-                </div>
-                <button
-                  className="btn"
-                  disabled={maxed || state.prestigePoints < cost}
-                  onClick={() => onBuy(node.id)}
-                  style={{ flexShrink: 0, background: maxed ? 'none' : '#4A3D6B', border: `1px solid ${maxed ? '#3D3350' : '#6B5A9C'}`, borderRadius: 6, padding: '6px 10px', color: maxed ? '#8A7CA0' : '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: maxed ? 'default' : 'pointer' }}
-                >
-                  {maxed ? 'Maxed' : `${cost} pt${cost === 1 ? '' : 's'}`}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+  return h('div', { style: { background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12, opacity: tierUnlocked ? 1 : 0.6 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tierUnlocked ? 8 : 0 } },
+      h('div', { style: { fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif' } }, tier.label),
+      !tierUnlocked && h('span', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 3 } },
+        h('span', { style: { fontSize: 10 } }, '🔒'), ` spend ${tier.requiredSpent} pts to unlock`
+      )
+    ),
+    tierUnlocked && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+      tier.nodes.map(node => {
+        const rank = rankOf(state, node.id);
+        const maxed = rank >= NODE_MAX_RANK;
+        const cost = maxed ? null : nodeCostAt(node, rank);
+        const bev = BEVERAGES.find(b => b.id === node.beverageId);
+        const desc = node.type === 'rate'
+          ? `+${Math.round(RATE_EFFECT_PER_RANK * 100)}% ${bev.name} rate / rank`
+          : `-${Math.round(COST_EFFECT_PER_RANK * 100)}% ${bev.name} costs / rank`;
+        return h('div', { key: node.id, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#2A2233', borderRadius: 7, padding: '7px 9px' } },
+          h('div', { style: { minWidth: 0 } },
+            h('div', { style: { fontSize: 11.5, fontWeight: 600, color: '#E5D9FF' } }, node.name, ' ', h('span', { style: { color: '#8A7CA0', fontWeight: 400 } }, `Lv.${rank}/${NODE_MAX_RANK}`)),
+            h('div', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' } }, desc)
+          ),
+          h('button', {
+            className: 'btn', disabled: maxed || state.prestigePoints < cost,
+            onClick: () => onBuy(node.id),
+            style: { flexShrink: 0, background: maxed ? 'none' : '#4A3D6B', border: `1px solid ${maxed ? '#3D3350' : '#6B5A9C'}`, borderRadius: 6, padding: '6px 10px', color: maxed ? '#8A7CA0' : '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: maxed ? 'default' : 'pointer' },
+          }, maxed ? 'Maxed' : `${cost} pt${cost === 1 ? '' : 's'}`)
+        );
+      })
+    )
   );
 }
+
+try {
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(h(ErrorBoundary, null, h(Fermentary)));
+} catch (err) {
+  document.getElementById('root').innerHTML = '<div class="fermentary-msg"><h2>Something went wrong</h2><p>' + ((err && err.message) || 'Unknown error') + '</p></div>';
+}
+
+} // end runFermentary
+</script>
+</body>
+</html>
