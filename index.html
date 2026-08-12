@@ -1,0 +1,537 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Coins, AlertTriangle, TrendingUp, Award, Lock, Zap, ArrowUpCircle, Sparkles, RefreshCw } from 'lucide-react';
+
+const FONT_LINK_ID = 'fermentary-fonts';
+const SAVE_KEY = 'fermentary-save-v3';
+
+// Each beverage earns cash every second on its own. "Proficiency" is a level
+// you buy up: rate = baseRate * level, so cost grows exponentially while
+// output grows linearly. Prestige upgrades apply permanent multipliers on
+// top of this and never reset.
+const BEVERAGES = [
+  { id: 'house', name: 'House Brew', baseRate: 0.15, unlockCost: 0, unlockDebtPaid: 0, upgradeBaseCost: 4, growth: 1.28 },
+  { id: 'quick', name: 'Quick Ale', baseRate: 0.75, unlockCost: 40, unlockDebtPaid: 0, upgradeBaseCost: 26, growth: 1.30 },
+  { id: 'pale', name: 'Pale Lager', baseRate: 2.1, unlockCost: 126, unlockDebtPaid: 120, upgradeBaseCost: 82, growth: 1.31 },
+  { id: 'stout', name: 'Barrel Stout', baseRate: 5.4, unlockCost: 350, unlockDebtPaid: 400, upgradeBaseCost: 195, growth: 1.32 },
+  { id: 'reserve', name: "Founder's Reserve", baseRate: 12.6, unlockCost: 840, unlockDebtPaid: 1000, upgradeBaseCost: 450, growth: 1.33 },
+];
+
+const TAP_SECONDS_WORTH = 8;
+const TAP_COOLDOWN = 1800;
+const INTEREST_RATE_PER_SEC = 0.00028;
+const STARTING_DEBT = 350;
+const STARTING_CASH = 60;
+const TICK_MS = 200;
+
+// --- Prestige tree ---------------------------------------------------------
+const RATE_EFFECT_PER_RANK = 0.10;   // +10% beverage rate per rank
+const COST_EFFECT_PER_RANK = 0.08;   // -8% beverage cost per rank
+const NODE_MAX_RANK = 5;
+const NODE_COST_GROWTH = 1.25;
+const PRESTIGE_POINTS_BASE = 4;
+const PRESTIGE_POINTS_PER_LEVEL = 3;
+const DEBT_GROWTH_PER_PRESTIGE = 1.6;
+
+const PRESTIGE_TREE = [
+  {
+    tier: 1, label: 'Tier I — Fundamentals', requiredSpent: 0,
+    nodes: [
+      { id: 'house_rate', beverageId: 'house', name: 'House Recipe', type: 'rate', baseCost: 3 },
+      { id: 'house_cost', beverageId: 'house', name: 'House Efficiency', type: 'cost', baseCost: 2 },
+      { id: 'quick_rate', beverageId: 'quick', name: 'Quick Ale Recipe', type: 'rate', baseCost: 3 },
+      { id: 'quick_cost', beverageId: 'quick', name: 'Bulk Grain Deals', type: 'cost', baseCost: 2 },
+    ],
+  },
+  {
+    tier: 2, label: 'Tier II — Expansion', requiredSpent: 10,
+    nodes: [
+      { id: 'pale_rate', beverageId: 'pale', name: 'Pale Lager Recipe', type: 'rate', baseCost: 6 },
+      { id: 'pale_cost', beverageId: 'pale', name: 'Hop Contracts', type: 'cost', baseCost: 4 },
+      { id: 'stout_rate', beverageId: 'stout', name: 'Barrel Stout Recipe', type: 'rate', baseCost: 6 },
+      { id: 'stout_cost', beverageId: 'stout', name: 'Oak Barrel Deals', type: 'cost', baseCost: 4 },
+    ],
+  },
+  {
+    tier: 3, label: 'Tier III — Mastery', requiredSpent: 24,
+    nodes: [
+      { id: 'reserve_rate', beverageId: 'reserve', name: "Founder's Recipe", type: 'rate', baseCost: 9 },
+      { id: 'reserve_cost', beverageId: 'reserve', name: 'Estate Sourcing', type: 'cost', baseCost: 6 },
+    ],
+  },
+];
+const NODE_BY_ID = {};
+PRESTIGE_TREE.forEach(t => t.nodes.forEach(n => { NODE_BY_ID[n.id] = { ...n, tier: t.tier }; }));
+
+function defaultRunState() {
+  const beverages = {};
+  BEVERAGES.forEach(b => { beverages[b.id] = { level: b.unlockCost === 0 ? 1 : 0, lastTap: 0 }; });
+  return { cash: STARTING_CASH, debt: STARTING_DEBT, totalPaid: 0, beverages };
+}
+
+function defaultState() {
+  return {
+    ...defaultRunState(),
+    totalEarned: 0,
+    lastSeen: Date.now(),
+    prestige: 0,
+    prestigePoints: 0,
+    prestigeSpent: 0,
+    prestigeUpgrades: {},
+  };
+}
+
+function fmtMoney(n) {
+  return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function costLabel(n) { return n <= 0 ? 'Free' : fmtMoney(n); }
+
+function rankOf(state, nodeId) { return state.prestigeUpgrades[nodeId] || 0; }
+
+function rateMultiplier(bevId, state) {
+  const rank = rankOf(state, `${bevId}_rate`);
+  return 1 + rank * RATE_EFFECT_PER_RANK;
+}
+function costMultiplier(bevId, state) {
+  const rank = rankOf(state, `${bevId}_cost`);
+  return Math.max(0.4, 1 - rank * COST_EFFECT_PER_RANK);
+}
+function rateOf(bev, level, state) {
+  if (level <= 0) return 0;
+  return bev.baseRate * level * rateMultiplier(bev.id, state);
+}
+function effectiveUnlockCost(bev, state) {
+  return Math.max(0, Math.round(bev.unlockCost * costMultiplier(bev.id, state)));
+}
+function effectiveUpgradeBaseCost(bev, state) {
+  return bev.upgradeBaseCost * costMultiplier(bev.id, state);
+}
+function upgradeCostOf(bev, level, state) {
+  return Math.ceil(effectiveUpgradeBaseCost(bev, state) * Math.pow(bev.growth, Math.max(0, level - 1)));
+}
+function totalRateOf(state) {
+  return BEVERAGES.reduce((sum, b) => sum + rateOf(b, state.beverages[b.id]?.level || 0, state), 0);
+}
+function nodeCostAt(node, rank) {
+  return Math.ceil(node.baseCost * Math.pow(NODE_COST_GROWTH, rank));
+}
+function pointsForPrestige(currentLevel) {
+  return PRESTIGE_POINTS_BASE + currentLevel * PRESTIGE_POINTS_PER_LEVEL;
+}
+function debtForRun(newLevel) {
+  return Math.round(STARTING_DEBT * Math.pow(DEBT_GROWTH_PER_PRESTIGE, newLevel));
+}
+
+export default function Fermentary() {
+  const [state, setState] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirmingPrestige, setConfirmingPrestige] = useState(false);
+  const toastTimer = useRef(null);
+  const stateRef = useRef(null);
+  stateRef.current = state;
+
+  const showToast = useCallback((msg, tone = 'neutral') => setToast({ msg, tone, id: Math.random() }), []);
+
+  useEffect(() => {
+    if (!document.getElementById(FONT_LINK_ID)) {
+      const link = document.createElement('link');
+      link.id = FONT_LINK_ID;
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let loadedState = null;
+      try {
+        const res = await window.storage.get(SAVE_KEY, false);
+        if (res && res.value) loadedState = JSON.parse(res.value);
+      } catch (e) { loadedState = null; }
+
+      const base = loadedState || defaultState();
+      const nowTs = Date.now();
+      const elapsedSec = Math.max(0, (nowTs - (base.lastSeen || nowTs)) / 1000);
+
+      const rate = totalRateOf(base);
+      const earned = rate * elapsedSec;
+      const debt = base.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, elapsedSec);
+
+      const next = { ...base, cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs };
+      if (!cancelled) {
+        setState(next);
+        setLoaded(true);
+        if (loadedState && elapsedSec > 20) {
+          showToast(`Welcome back — earned ${fmtMoney(earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const dt = TICK_MS / 1000;
+    const id = setInterval(() => {
+      setState(prev => {
+        if (!prev) return prev;
+        const rate = totalRateOf(prev);
+        const income = rate * dt;
+        const debt = prev.debt > 0 ? prev.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, dt) : 0;
+        return { ...prev, cash: prev.cash + income, totalEarned: prev.totalEarned + income, debt };
+      });
+    }, TICK_MS);
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const id = setInterval(() => {
+      if (stateRef.current) {
+        const toSave = { ...stateRef.current, lastSeen: Date.now() };
+        window.storage.set(SAVE_KEY, JSON.stringify(toSave), false).catch(() => {});
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  if (!loaded || !state) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#241A12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9BBA3', fontFamily: 'Inter, sans-serif' }}>
+        Uncorking the ledger…
+      </div>
+    );
+  }
+
+  const totalPaid = state.totalPaid;
+  const totalRate = totalRateOf(state);
+  const debtCleared = state.debt <= 1;
+
+  function unlockBeverage(id) {
+    const bev = BEVERAGES.find(b => b.id === id);
+    setState(prev => {
+      const cost = effectiveUnlockCost(bev, prev);
+      if (prev.cash < cost) { showToast('Not enough cash to unlock that.', 'warn'); return prev; }
+      const beverages = { ...prev.beverages, [id]: { ...prev.beverages[id], level: 1 } };
+      showToast(`${bev.name} is now brewing.`, 'good');
+      return { ...prev, cash: prev.cash - cost, beverages };
+    });
+  }
+
+  function upgradeBeverage(id) {
+    const bev = BEVERAGES.find(b => b.id === id);
+    setState(prev => {
+      const cur = prev.beverages[id];
+      if (!cur || cur.level < 1) return prev;
+      const cost = upgradeCostOf(bev, cur.level, prev);
+      if (prev.cash < cost) { showToast('Not enough cash for that upgrade.', 'warn'); return prev; }
+      const beverages = { ...prev.beverages, [id]: { ...cur, level: cur.level + 1 } };
+      return { ...prev, cash: prev.cash - cost, beverages };
+    });
+  }
+
+  function tapBeverage(id) {
+    const bev = BEVERAGES.find(b => b.id === id);
+    setState(prev => {
+      const cur = prev.beverages[id];
+      if (!cur || cur.level < 1) return prev;
+      if (Date.now() - (cur.lastTap || 0) < TAP_COOLDOWN) return prev;
+      const bonus = rateOf(bev, cur.level, prev) * TAP_SECONDS_WORTH;
+      const beverages = { ...prev.beverages, [id]: { ...cur, lastTap: Date.now() } };
+      return { ...prev, cash: prev.cash + bonus, totalEarned: prev.totalEarned + bonus, beverages };
+    });
+  }
+
+  function payDebt(amount) {
+    setState(prev => {
+      const pay = Math.min(amount, prev.cash, prev.debt);
+      if (pay <= 0) return prev;
+      return { ...prev, cash: prev.cash - pay, debt: prev.debt - pay, totalPaid: prev.totalPaid + pay };
+    });
+  }
+
+  function doPrestige() {
+    setState(prev => {
+      if (prev.debt > 1) return prev;
+      const newLevel = prev.prestige + 1;
+      const pointsGained = pointsForPrestige(prev.prestige);
+      showToast(`Prestiged to generation ${newLevel + 1} — +${pointsGained} prestige points.`, 'good');
+      return {
+        ...prev,
+        ...defaultRunState(),
+        debt: debtForRun(newLevel),
+        totalEarned: prev.totalEarned,
+        lastSeen: Date.now(),
+        prestige: newLevel,
+        prestigePoints: prev.prestigePoints + pointsGained,
+        prestigeSpent: prev.prestigeSpent,
+        prestigeUpgrades: prev.prestigeUpgrades,
+      };
+    });
+    setConfirmingPrestige(false);
+  }
+
+  function buyPrestigeNode(nodeId) {
+    const node = NODE_BY_ID[nodeId];
+    setState(prev => {
+      const rank = rankOf(prev, nodeId);
+      if (rank >= NODE_MAX_RANK) return prev;
+      const cost = nodeCostAt(node, rank);
+      if (prev.prestigePoints < cost) { showToast('Not enough prestige points.', 'warn'); return prev; }
+      return {
+        ...prev,
+        prestigePoints: prev.prestigePoints - cost,
+        prestigeSpent: prev.prestigeSpent + cost,
+        prestigeUpgrades: { ...prev.prestigeUpgrades, [nodeId]: rank + 1 },
+      };
+    });
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #241A12 0%, #1B140D 100%)', fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 }}>
+      <style>{`
+        @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
+        .btn { transition: transform 0.12s ease, filter 0.12s ease; }
+        .btn:active { transform: scale(0.96); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn:not(:disabled):hover { filter: brightness(1.12); }
+        .tap-card { transition: transform 0.1s ease; cursor: pointer; }
+        .tap-card:active { transform: scale(0.985); }
+      `}</style>
+
+      {toast && (
+        <div key={toast.id} style={{
+          position: 'fixed', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
+          background: toast.tone === 'good' ? '#3C4F35' : toast.tone === 'warn' ? '#5C2B2B' : '#332619',
+          border: `1px solid ${toast.tone === 'good' ? '#6B8A5E' : toast.tone === 'warn' ? '#A13D3D' : '#5A4630'}`,
+          color: '#EDE3D0', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontFamily: 'Inter, sans-serif',
+          animation: 'toastIn 0.25s ease', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', maxWidth: '90vw', textAlign: 'center'
+        }}
+          onAnimationEnd={() => { clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3200); }}
+        >
+          {toast.msg}
+        </div>
+      )}
+
+      <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid #3A2C1D' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 }}>The Fermentary</h1>
+          <span style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace' }}>gen. {state.prestige + 1}</span>
+        </div>
+        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#A6957A' }}>Every pour adds up — even when you're not watching.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' }}>
+        <LedgerCard icon={<Coins size={15} />} label="Cash" value={fmtMoney(state.cash)} color="#E0A93E" />
+        <LedgerCard icon={<AlertTriangle size={15} />} label="Debt" value={fmtMoney(state.debt)} color={debtCleared ? '#6B8A5E' : '#C15C5C'} bleed={Math.min(1, state.debt / debtForRun(state.prestige))} />
+        <LedgerCard icon={<TrendingUp size={15} />} label="Income" value={`${fmtMoney(totalRate)}/sec`} color="#9CC28A" />
+        <LedgerCard icon={<Award size={15} />} label="Lifetime earned" value={fmtMoney(state.totalEarned)} color="#B49BD1" />
+      </div>
+
+      <div style={{ padding: '0 16px 16px', display: 'flex', gap: 8 }}>
+        <button className="btn" disabled={state.cash <= 0 || debtCleared} onClick={() => payDebt(Math.min(state.cash, 50))} style={payBtnStyle}>Pay $50</button>
+        <button className="btn" disabled={state.cash <= 0 || debtCleared} onClick={() => payDebt(state.cash)} style={{ ...payBtnStyle, background: '#4A3A24', borderColor: '#6B5636' }}>Pay all cash</button>
+      </div>
+
+      {/* Prestige banner */}
+      <div style={{ margin: '0 16px 16px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#C9B8E8', fontSize: 12, fontWeight: 600 }}>
+            <Sparkles size={14} /> Prestige · {state.prestigePoints} pts available
+          </div>
+          <span style={{ fontSize: 10.5, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' }}>gen. {state.prestige + 1}</span>
+        </div>
+
+        {!debtCleared && (
+          <div style={{ fontSize: 11, color: '#8A7CA0', marginTop: 6 }}>Clear your debt to prestige — reset the run, take on more debt next time, and earn points to spend below, permanently.</div>
+        )}
+
+        {debtCleared && !confirmingPrestige && (
+          <button className="btn" onClick={() => setConfirmingPrestige(true)} style={{ marginTop: 8, width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <RefreshCw size={13} /> Prestige now — earn {pointsForPrestige(state.prestige)} points
+          </button>
+        )}
+
+        {debtCleared && confirmingPrestige && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: '#C9B8E8', marginBottom: 8 }}>
+              This resets cash, debt, and beverage levels. Next run starts at {fmtMoney(debtForRun(state.prestige + 1))} debt. Prestige Tree upgrades are never lost.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" onClick={doPrestige} style={{ flex: 1, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '8px 0', color: '#E5D9FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Confirm prestige</button>
+              <button className="btn" onClick={() => setConfirmingPrestige(false)} style={{ flex: 1, background: 'none', border: '1px solid #4A3D5C', borderRadius: 8, padding: '8px 0', color: '#8A7CA0', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: '0 16px' }}>
+        <SectionLabel text="Beverages" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {BEVERAGES.map(b => {
+            const unlockedTank = totalPaid >= b.unlockDebtPaid;
+            const cur = state.beverages[b.id];
+            return (
+              <BeverageCard
+                key={b.id} bev={b} bevState={cur} debtUnlocked={unlockedTank} cash={state.cash}
+                rate={rateOf(b, cur.level, state)}
+                nextRate={rateOf(b, cur.level + 1, state)}
+                nextCost={cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state)}
+                onUnlock={unlockBeverage} onUpgrade={upgradeBeverage} onTap={tapBeverage}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ padding: '20px 16px 0' }}>
+        <SectionLabel text="Prestige tree" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {PRESTIGE_TREE.map(tier => (
+            <PrestigeTierBlock key={tier.tier} tier={tier} state={state} onBuy={buyPrestigeNode} />
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '18px 16px 0', fontSize: 11, color: '#6B5D48', textAlign: 'center' }}>
+        Progress saves automatically. Tap a brewing beverage for a quick bonus — it's worth more than just letting it run.
+      </div>
+    </div>
+  );
+}
+
+function SectionLabel({ text }) {
+  return <div style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' }}>{text}</div>;
+}
+
+const payBtnStyle = { flex: 1, background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer' };
+
+function LedgerCard({ icon, label, value, color, bleed }) {
+  return (
+    <div style={{ position: 'relative', background: '#EDE3D0', borderRadius: 8, padding: '10px 12px', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' }}>
+      {bleed !== undefined && (
+        <div style={{ position: 'absolute', left: 0, bottom: 0, width: '100%', height: `${bleed * 100}%`, background: 'linear-gradient(180deg, rgba(161,61,61,0.05), rgba(161,61,61,0.22))', pointerEvents: 'none' }} />
+      )}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, color: '#7A6A4E', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{icon} {label}</div>
+      <div style={{ position: 'relative', fontFamily: 'JetBrains Mono, monospace', fontSize: 17, fontWeight: 700, color: '#2B2018', marginTop: 3 }}><span style={{ color }}>{value}</span></div>
+    </div>
+  );
+}
+
+function BeverageCard({ bev, bevState, debtUnlocked, cash, rate, nextRate, nextCost, onUnlock, onUpgrade, onTap }) {
+  const [pops, setPops] = useState([]);
+  const owned = bevState.level > 0;
+  const tapReady = owned && Date.now() - (bevState.lastTap || 0) >= TAP_COOLDOWN;
+
+  if (!debtUnlocked) {
+    return (
+      <div style={{ background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' }}>
+        <Lock size={16} />
+        <div style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>{bev.name} — pay down ${bev.unlockDebtPaid} total to unlock</div>
+      </div>
+    );
+  }
+
+  function handleTap() {
+    if (!tapReady) return;
+    const bonus = rate * TAP_SECONDS_WORTH;
+    const id = Math.random();
+    setPops(p => [...p, { id, text: `+${fmtMoney(bonus)}` }]);
+    setTimeout(() => setPops(p => p.filter(x => x.id !== id)), 700);
+    onTap(bev.id);
+  }
+
+  return (
+    <div
+      className={owned ? 'tap-card' : ''}
+      onClick={owned ? handleTap : undefined}
+      style={{ position: 'relative', background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 10, padding: 12, overflow: 'hidden' }}
+    >
+      {pops.map(p => (
+        <div key={p.id} style={{ position: 'absolute', top: 10, right: 14, fontSize: 13, fontWeight: 700, color: '#E0A93E', fontFamily: 'JetBrains Mono, monospace', animation: 'floatUp 0.7s ease forwards', pointerEvents: 'none' }}>{p.text}</div>
+      ))}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' }}>{bev.name}</div>
+          {owned ? (
+            <div style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>Proficiency Lv.{bevState.level} · {fmtMoney(rate)}/sec</div>
+          ) : (
+            <div style={{ fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 }}>Not brewing yet · base {fmtMoney(bev.baseRate)}/sec</div>
+          )}
+        </div>
+        {owned && (
+          <div style={{ fontSize: 9.5, color: tapReady ? '#E0A93E' : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
+            <Zap size={11} /> {tapReady ? 'tap for bonus' : 'cooling down'}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        {owned ? (
+          <button
+            className="btn"
+            disabled={cash < nextCost}
+            onClick={(e) => { e.stopPropagation(); onUpgrade(bev.id); }}
+            style={{ width: '100%', background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 7, padding: '8px 0', color: '#E0A93E', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+          >
+            <ArrowUpCircle size={13} /> Improve proficiency — {fmtMoney(nextCost)} → {fmtMoney(nextRate)}/sec
+          </button>
+        ) : (
+          <button
+            className="btn"
+            disabled={cash < nextCost}
+            onClick={(e) => { e.stopPropagation(); onUnlock(bev.id); }}
+            style={{ width: '100%', background: '#2F3A2C', border: '1px solid #4E6247', borderRadius: 7, padding: '8px 0', color: '#9CC28A', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Start brewing — {costLabel(nextCost)}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrestigeTierBlock({ tier, state, onBuy }) {
+  const tierUnlocked = state.prestigeSpent >= tier.requiredSpent;
+  return (
+    <div style={{ background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12, opacity: tierUnlocked ? 1 : 0.6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tierUnlocked ? 8 : 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif' }}>{tier.label}</div>
+        {!tierUnlocked && <span style={{ fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 3 }}><Lock size={10} /> spend {tier.requiredSpent} pts to unlock</span>}
+      </div>
+      {tierUnlocked && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {tier.nodes.map(node => {
+            const rank = rankOf(state, node.id);
+            const maxed = rank >= NODE_MAX_RANK;
+            const cost = maxed ? null : nodeCostAt(node, rank);
+            const bev = BEVERAGES.find(b => b.id === node.beverageId);
+            const desc = node.type === 'rate'
+              ? `+${Math.round(RATE_EFFECT_PER_RANK * 100)}% ${bev.name} rate / rank`
+              : `-${Math.round(COST_EFFECT_PER_RANK * 100)}% ${bev.name} costs / rank`;
+            return (
+              <div key={node.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#2A2233', borderRadius: 7, padding: '7px 9px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: '#E5D9FF' }}>{node.name} <span style={{ color: '#8A7CA0', fontWeight: 400 }}>Lv.{rank}/{NODE_MAX_RANK}</span></div>
+                  <div style={{ fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' }}>{desc}</div>
+                </div>
+                <button
+                  className="btn"
+                  disabled={maxed || state.prestigePoints < cost}
+                  onClick={() => onBuy(node.id)}
+                  style={{ flexShrink: 0, background: maxed ? 'none' : '#4A3D6B', border: `1px solid ${maxed ? '#3D3350' : '#6B5A9C'}`, borderRadius: 6, padding: '6px 10px', color: maxed ? '#8A7CA0' : '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: maxed ? 'default' : 'pointer' }}
+                >
+                  {maxed ? 'Maxed' : `${cost} pt${cost === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
