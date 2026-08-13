@@ -619,6 +619,17 @@ function debtForRun(newLevel) {
 function flatInterestPerSec(state) {
   return debtForRun(state.prestige) * DEBT_FLAT_INTEREST_RATIO;
 }
+// Shared by both the initial page-load catch-up and the visibility-change
+// catch-up (mobile browsers throttle/pause timers in the background, so a
+// locked phone or backgrounded tab needs this recomputed on return, not
+// just once at page load).
+function applyOfflineCatchUp(base, elapsedSec) {
+  const rate = totalRateOf(base);
+  const earned = rate * elapsedSec;
+  const startingDebt = settleDebt(base.debt);
+  const debt = startingDebt > 0 ? settleDebt(startingDebt + flatInterestPerSec(base) * elapsedSec) : 0;
+  return { cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, earned };
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -678,19 +689,15 @@ function Fermentary() {
 
       const nowTs = Date.now();
       const elapsedSec = Math.max(0, (nowTs - (base.lastSeen || nowTs)) / 1000);
+      const result = applyOfflineCatchUp(base, elapsedSec);
 
-      const rate = totalRateOf(base);
-      const earned = rate * elapsedSec;
-      const startingDebt = settleDebt(base.debt);
-      const debt = startingDebt > 0 ? settleDebt(startingDebt + flatInterestPerSec(base) * elapsedSec) : 0;
-
-      const next = Object.assign({}, base, { cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs });
+      const next = Object.assign({}, base, { cash: result.cash, totalEarned: result.totalEarned, debt: result.debt, lastSeen: nowTs });
       if (!cancelled) {
         setState(next);
         setLoaded(true);
         if (!next.tutorialDismissed) setTutorialOpen(true);
         if (loadedState && elapsedSec > 20) {
-          showToast(`Welcome back — earned ${fmtMoney(earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
+          showToast(`Welcome back — earned ${fmtMoney(result.earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
         }
       }
     })();
@@ -757,6 +764,40 @@ function Fermentary() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  // Locking the phone or backgrounding the tab doesn't reload the page, so
+  // the load-time catch-up above never re-runs on its own — and mobile
+  // browsers throttle or fully pause setInterval while backgrounded, so the
+  // live ticker silently misses that whole stretch of time. This catches
+  // the gap up the moment the tab becomes visible again, using whatever
+  // lastSeen was last recorded (a few seconds stale at worst).
+  useEffect(() => {
+    if (!loaded) return;
+    function catchUp() {
+      if (document.hidden) return;
+      const prev = stateRef.current;
+      if (!prev) return;
+      const nowTs = Date.now();
+      const elapsedSec = Math.max(0, (nowTs - (prev.lastSeen || nowTs)) / 1000);
+      if (elapsedSec < 2) {
+        setState(p => p && Object.assign({}, p, { lastSeen: nowTs }));
+        return;
+      }
+      const result = applyOfflineCatchUp(prev, elapsedSec);
+      setState(p => p && Object.assign({}, p, { cash: result.cash, totalEarned: result.totalEarned, debt: result.debt, lastSeen: nowTs }));
+      if (elapsedSec > 20) {
+        showToast(`Welcome back — earned ${fmtMoney(result.earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
+      }
+    }
+    document.addEventListener('visibilitychange', catchUp);
+    window.addEventListener('focus', catchUp);
+    window.addEventListener('pageshow', catchUp);
+    return () => {
+      document.removeEventListener('visibilitychange', catchUp);
+      window.removeEventListener('focus', catchUp);
+      window.removeEventListener('pageshow', catchUp);
+    };
+  }, [loaded, showToast]);
 
   useEffect(() => {
     if (!loaded || !state || !state.tasks) return;
