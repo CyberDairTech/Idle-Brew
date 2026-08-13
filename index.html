@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>The Fermentary</title>
+<title>Idle Brew</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
 <style>
   html, body { margin: 0; padding: 0; background: #1B140D; }
@@ -16,7 +15,7 @@
 </style>
 </head>
 <body>
-<div id="root"><div class="fermentary-msg"><h2>Loading The Fermentary…</h2></div></div>
+<div id="root"><div class="fermentary-msg"><h2>Loading Idle Brew…</h2></div></div>
 
 <script>
 // Try several CDNs in turn, since some networks (school/work/public wifi)
@@ -98,19 +97,133 @@ const SAVE_KEY = 'fermentary-save-v3';
 // you buy up: rate = baseRate * level, so cost grows exponentially while
 // output grows linearly. Prestige upgrades apply permanent multipliers on
 // top of this and never reset.
+// House/Quick/Pale are left exactly as tuned before — that opening pace was
+// good. From Stout onward, cost now grows faster (2.9x/tier) than rate
+// (2.3x/tier) on purpose: total income is a *sum* across every beverage you
+// own, so if cost only kept pace with rate, each unlock made the next one
+// easier and the whole back half of the game snowballed into minutes
+// instead of hours. debtPaid grows slightly faster still (3.1x/tier), so
+// late tiers need real cumulative investment, not just a fat wallet.
+// All prices are rounded to clean, round-looking values rather than the raw
+// output of those growth formulas.
 const BEVERAGES = [
-  { id: 'house', name: 'House Brew', baseRate: 0.15, unlockCost: 0, unlockDebtPaid: 0, upgradeBaseCost: 4, growth: 1.28 },
-  { id: 'quick', name: 'Quick Ale', baseRate: 0.75, unlockCost: 40, unlockDebtPaid: 0, upgradeBaseCost: 26, growth: 1.30 },
-  { id: 'pale', name: 'Pale Lager', baseRate: 2.1, unlockCost: 126, unlockDebtPaid: 120, upgradeBaseCost: 82, growth: 1.31 },
-  { id: 'stout', name: 'Barrel Stout', baseRate: 5.4, unlockCost: 350, unlockDebtPaid: 400, upgradeBaseCost: 195, growth: 1.32 },
-  { id: 'reserve', name: "Founder's Reserve", baseRate: 12.6, unlockCost: 840, unlockDebtPaid: 1000, upgradeBaseCost: 450, growth: 1.33 },
+  { id: 'house', name: 'House Brew', category: 'beer', baseRate: 0.15, unlockCost: 0, unlockDebtPaid: 0, upgradeBaseCost: 4, growth: 1.28 },
+  { id: 'quick', name: 'Quick Ale', category: 'beer', baseRate: 0.75, unlockCost: 40, unlockDebtPaid: 0, upgradeBaseCost: 26, growth: 1.30 },
+  { id: 'pale', name: 'Pale Lager', category: 'beer', baseRate: 2.1, unlockCost: 130, unlockDebtPaid: 120, upgradeBaseCost: 82, growth: 1.31 },
+  { id: 'stout', name: 'Barrel Stout', category: 'beer', baseRate: 4.8, unlockCost: 370, unlockDebtPaid: 370, upgradeBaseCost: 240, growth: 1.34 },
+  { id: 'reserve', name: "Founder's Reserve", category: 'beer', baseRate: 11, unlockCost: 1100, unlockDebtPaid: 1200, upgradeBaseCost: 690, growth: 1.36 },
+
+  { id: 'cider_orchard', name: 'Orchard Cider', category: 'cider', baseRate: 25, unlockCost: 3100, unlockDebtPaid: 3600, upgradeBaseCost: 2000, growth: 1.38 },
+  { id: 'cider_spiced', name: 'Spiced Cider', category: 'cider', baseRate: 58, unlockCost: 8900, unlockDebtPaid: 11000, upgradeBaseCost: 5800, growth: 1.40 },
+  { id: 'cider_barrel', name: 'Barrel-Aged Cider', category: 'cider', baseRate: 130, unlockCost: 26000, unlockDebtPaid: 34000, upgradeBaseCost: 17000, growth: 1.42 },
+  { id: 'cider_vintage', name: 'Vintage Cider', category: 'cider', baseRate: 310, unlockCost: 75000, unlockDebtPaid: 110000, upgradeBaseCost: 49000, growth: 1.44 },
+  { id: 'cider_ice', name: 'Ice Cider Reserve', category: 'cider', baseRate: 700, unlockCost: 220000, unlockDebtPaid: 330000, upgradeBaseCost: 140000, growth: 1.46 },
+
+  { id: 'wine_table', name: 'Table Wine', category: 'wine', baseRate: 1600, unlockCost: 630000, unlockDebtPaid: 1000000, upgradeBaseCost: 410000, growth: 1.48 },
+  { id: 'wine_estate', name: 'Estate Red', category: 'wine', baseRate: 3700, unlockCost: 1800000, unlockDebtPaid: 3200000, upgradeBaseCost: 1200000, growth: 1.50 },
+  { id: 'wine_cabernet', name: 'Reserve Cabernet', category: 'wine', baseRate: 8600, unlockCost: 5300000, unlockDebtPaid: 9800000, upgradeBaseCost: 3500000, growth: 1.52 },
+  { id: 'wine_blend', name: "Vintner's Blend", category: 'wine', baseRate: 20000, unlockCost: 15000000, unlockDebtPaid: 30000000, upgradeBaseCost: 10000000, growth: 1.54 },
+  { id: 'wine_grandcru', name: 'Grand Cru', category: 'wine', baseRate: 45000, unlockCost: 45000000, unlockDebtPaid: 95000000, upgradeBaseCost: 29000000, growth: 1.56 },
+
+  { id: 'whiskey_corn', name: 'Corn Whiskey', category: 'whiskey', baseRate: 100000, unlockCost: 130000000, unlockDebtPaid: 290000000, upgradeBaseCost: 84000000, growth: 1.58 },
+  { id: 'whiskey_rye', name: 'Rye Whiskey', category: 'whiskey', baseRate: 240000, unlockCost: 370000000, unlockDebtPaid: 910000000, upgradeBaseCost: 240000000, growth: 1.60 },
+  { id: 'whiskey_bourbon', name: 'Bourbon Reserve', category: 'whiskey', baseRate: 550000, unlockCost: 1100000000, unlockDebtPaid: 2800000000, upgradeBaseCost: 710000000, growth: 1.62 },
+  { id: 'whiskey_singlemalt', name: 'Single Malt', category: 'whiskey', baseRate: 1300000, unlockCost: 3200000000, unlockDebtPaid: 8700000000, upgradeBaseCost: 2100000000, growth: 1.64 },
+  { id: 'whiskey_legacy', name: "Master's Legacy Cask", category: 'whiskey', baseRate: 2900000, unlockCost: 9100000000, unlockDebtPaid: 27000000000, upgradeBaseCost: 6000000000, growth: 1.66 },
+];
+
+const CATEGORY_LABELS = { beer: 'Beers', cider: 'Ciders', wine: 'Wines', whiskey: 'Whiskeys' };
+const CATEGORY_STYLES = {
+  beer: { bg: '#2C2116', border: '#3A2C1D', accent: '#E0A93E', accentSoft: '#8A7860' },
+  cider: { bg: '#332B14', border: '#4E4420', accent: '#D4AF2C', accentSoft: '#8C7C42' },
+  wine: { bg: '#2A1620', border: '#472233', accent: '#C05070', accentSoft: '#8C5A68' },
+  whiskey: { bg: '#2A1D12', border: '#4A3420', accent: '#B5651D', accentSoft: '#8C6B47' },
+};
+
+// Prestige tree tiers are drawn as connect-the-dots glass outlines matching
+// their beverage category. Each shape is a fixed 12-point outline (percent
+// coordinates in a 0-100 box); consecutive points are connected with an SVG
+// polygon so it reads as an actual traced silhouette. A tier's real
+// (purchasable) nodes sit at evenly-spaced points around that outline —
+// however many it has (2/4/6) — and the remaining points are small
+// decorative dots that just complete the shape.
+const GLASS_OUTLINES = {
+  beer: [ // tall tapered pint glass
+    { x: 28, y: 4 }, { x: 50, y: 2 }, { x: 72, y: 4 }, { x: 76, y: 20 },
+    { x: 68, y: 48 }, { x: 63, y: 74 }, { x: 65, y: 95 }, { x: 50, y: 97 },
+    { x: 35, y: 95 }, { x: 37, y: 74 }, { x: 32, y: 48 }, { x: 24, y: 20 },
+  ],
+  // Stemmed goblet. The stem is a thin, closely-paired edge (not the wide
+  // gap it was before) so it reads as one line rather than two; real
+  // (interactive) nodes are kept off the stem entirely via
+  // WINE_NODE_INDICES below, so it never shows as two separate nodes.
+  wine: [
+    { x: 28, y: 4 }, { x: 72, y: 4 }, { x: 80, y: 20 }, { x: 66, y: 38 },
+    { x: 52, y: 50 }, { x: 52, y: 84 }, { x: 70, y: 96 }, { x: 30, y: 96 },
+    { x: 48, y: 84 }, { x: 48, y: 50 }, { x: 34, y: 38 }, { x: 20, y: 20 },
+  ],
+  cider: [ // cylindrical mug (handle drawn separately)
+    { x: 30, y: 4 }, { x: 50, y: 2 }, { x: 70, y: 4 }, { x: 75, y: 20 },
+    { x: 75, y: 50 }, { x: 72, y: 80 }, { x: 66, y: 97 }, { x: 50, y: 98 },
+    { x: 34, y: 97 }, { x: 28, y: 80 }, { x: 25, y: 50 }, { x: 25, y: 20 },
+  ],
+  whiskey: [ // short, wide rocks tumbler
+    { x: 24, y: 34 }, { x: 38, y: 31 }, { x: 62, y: 31 }, { x: 76, y: 34 },
+    { x: 80, y: 50 }, { x: 78, y: 68 }, { x: 72, y: 86 }, { x: 58, y: 95 },
+    { x: 42, y: 95 }, { x: 28, y: 86 }, { x: 22, y: 68 }, { x: 20, y: 50 },
+  ],
+};
+const REAL_NODE_INDICES = {
+  2: [0, 6],
+  4: [0, 3, 6, 9],
+  6: [0, 2, 4, 6, 8, 10],
+};
+// Wine keeps its real (interactive) nodes on the bowl-top and base pairs
+// only — never the stem — so the stem always reads as pure decoration
+// (one thin line) regardless of how many nodes a tier has.
+const WINE_NODE_INDICES = {
+  2: [0, 1],
+  4: [0, 1, 6, 7],
+  6: [0, 1, 2, 6, 7, 11],
+};
+
+const TUTORIAL_STEPS = [
+  {
+    title: 'Welcome to Idle Brew',
+    body: "You've taken over a struggling brewery — deep in debt, but with a plan. This quick walkthrough covers the basics, then you're on your own.",
+  },
+  {
+    title: 'Your drinks earn on their own',
+    body: 'Every beverage you unlock earns cash every second, whether you\'re watching or not. House Brew is already working for you, right now, for free.',
+  },
+  {
+    title: 'Debt never sleeps',
+    body: "Your loan grows interest every second too. Use the Pay $50 and Pay all cash buttons up top to keep it in check before it outpaces you.",
+  },
+  {
+    title: 'Unlock, then improve',
+    body: 'Spend cash to unlock new beverages. Once owned, spend more to improve their proficiency — that permanently raises how much they earn per second.',
+  },
+  {
+    title: 'Tap for a boost',
+    body: "Tap any beverage you've unlocked for an instant cash bonus. Idling earns steadily, but checking in and tapping around always earns more.",
+  },
+  {
+    title: 'Prestige for good',
+    body: "Once your debt hits zero, you can prestige: reset the run, take on a bigger loan next time, and spend permanent points in the Prestige Tree below. Ready to brew?",
+  },
 ];
 
 const TAP_SECONDS_WORTH = 8;
 const TAP_COOLDOWN = 1800;
 const INTEREST_RATE_PER_SEC = 0.00028;
+const INVEST_RATE_PER_SEC = 0.00028; // same rate, now working for you instead of against you
 const STARTING_DEBT = 350;
 const STARTING_CASH = 60;
+const DEBT_CLEAR_EPSILON = 0.01; // treat debt as paid off once it's under a cent, and snap it to exactly 0
+
+function isDebtCleared(debt) { return debt <= DEBT_CLEAR_EPSILON; }
+function settleDebt(debt) { return isDebtCleared(debt) ? 0 : debt; }
 const TICK_MS = 200;
 
 const RATE_EFFECT_PER_RANK = 0.10;
@@ -147,32 +260,299 @@ const PRESTIGE_TREE = [
       { id: 'reserve_cost', beverageId: 'reserve', name: 'Estate Sourcing', type: 'cost', baseCost: 6 },
     ],
   },
+  {
+    tier: 4, label: 'Tier IV — Orchard & Spice', requiredSpent: 45,
+    nodes: [
+      { id: 'cider_orchard_rate', beverageId: 'cider_orchard', name: 'Orchard Recipe', type: 'rate', baseCost: 12 },
+      { id: 'cider_orchard_cost', beverageId: 'cider_orchard', name: 'Orchard Contracts', type: 'cost', baseCost: 8 },
+      { id: 'cider_spiced_rate', beverageId: 'cider_spiced', name: 'Spiced Recipe', type: 'rate', baseCost: 12 },
+      { id: 'cider_spiced_cost', beverageId: 'cider_spiced', name: 'Spice Trade Deals', type: 'cost', baseCost: 8 },
+    ],
+  },
+  {
+    tier: 5, label: 'Tier V — The Cellar', requiredSpent: 75,
+    nodes: [
+      { id: 'cider_barrel_rate', beverageId: 'cider_barrel', name: 'Cask-Aging Recipe', type: 'rate', baseCost: 15 },
+      { id: 'cider_barrel_cost', beverageId: 'cider_barrel', name: 'Barrel Sourcing', type: 'cost', baseCost: 10 },
+      { id: 'cider_vintage_rate', beverageId: 'cider_vintage', name: 'Vintage Recipe', type: 'rate', baseCost: 15 },
+      { id: 'cider_vintage_cost', beverageId: 'cider_vintage', name: 'Vintage Contracts', type: 'cost', baseCost: 10 },
+      { id: 'cider_ice_rate', beverageId: 'cider_ice', name: 'Ice-Press Recipe', type: 'rate', baseCost: 15 },
+      { id: 'cider_ice_cost', beverageId: 'cider_ice', name: 'Cold Storage Deals', type: 'cost', baseCost: 10 },
+    ],
+  },
+  {
+    tier: 6, label: 'Tier VI — The Vineyard', requiredSpent: 115,
+    nodes: [
+      { id: 'wine_table_rate', beverageId: 'wine_table', name: 'Table Recipe', type: 'rate', baseCost: 18 },
+      { id: 'wine_table_cost', beverageId: 'wine_table', name: 'Vineyard Contracts', type: 'cost', baseCost: 12 },
+      { id: 'wine_estate_rate', beverageId: 'wine_estate', name: 'Estate Recipe', type: 'rate', baseCost: 18 },
+      { id: 'wine_estate_cost', beverageId: 'wine_estate', name: 'Estate Vineyard Deals', type: 'cost', baseCost: 12 },
+    ],
+  },
+  {
+    tier: 7, label: 'Tier VII — Grand Vintage', requiredSpent: 165,
+    nodes: [
+      { id: 'wine_cabernet_rate', beverageId: 'wine_cabernet', name: 'Cabernet Recipe', type: 'rate', baseCost: 21 },
+      { id: 'wine_cabernet_cost', beverageId: 'wine_cabernet', name: 'Cellar Contracts', type: 'cost', baseCost: 14 },
+      { id: 'wine_blend_rate', beverageId: 'wine_blend', name: 'Blending Recipe', type: 'rate', baseCost: 21 },
+      { id: 'wine_blend_cost', beverageId: 'wine_blend', name: 'Import Deals', type: 'cost', baseCost: 14 },
+      { id: 'wine_grandcru_rate', beverageId: 'wine_grandcru', name: 'Grand Cru Recipe', type: 'rate', baseCost: 21 },
+      { id: 'wine_grandcru_cost', beverageId: 'wine_grandcru', name: 'Grand Cru Sourcing', type: 'cost', baseCost: 14 },
+    ],
+  },
+  {
+    tier: 8, label: 'Tier VIII — The Distillery', requiredSpent: 230,
+    nodes: [
+      { id: 'whiskey_corn_rate', beverageId: 'whiskey_corn', name: 'Corn Mash Recipe', type: 'rate', baseCost: 24 },
+      { id: 'whiskey_corn_cost', beverageId: 'whiskey_corn', name: 'Grain Contracts', type: 'cost', baseCost: 16 },
+      { id: 'whiskey_rye_rate', beverageId: 'whiskey_rye', name: 'Rye Recipe', type: 'rate', baseCost: 24 },
+      { id: 'whiskey_rye_cost', beverageId: 'whiskey_rye', name: 'Rye Sourcing', type: 'cost', baseCost: 16 },
+    ],
+  },
+  {
+    tier: 9, label: 'Tier IX — Master Distiller', requiredSpent: 310,
+    nodes: [
+      { id: 'whiskey_bourbon_rate', beverageId: 'whiskey_bourbon', name: 'Bourbon Recipe', type: 'rate', baseCost: 27 },
+      { id: 'whiskey_bourbon_cost', beverageId: 'whiskey_bourbon', name: 'Charred Oak Deals', type: 'cost', baseCost: 18 },
+      { id: 'whiskey_singlemalt_rate', beverageId: 'whiskey_singlemalt', name: 'Single Malt Recipe', type: 'rate', baseCost: 27 },
+      { id: 'whiskey_singlemalt_cost', beverageId: 'whiskey_singlemalt', name: 'Malt House Deals', type: 'cost', baseCost: 18 },
+      { id: 'whiskey_legacy_rate', beverageId: 'whiskey_legacy', name: 'Legacy Recipe', type: 'rate', baseCost: 30 },
+      { id: 'whiskey_legacy_cost', beverageId: 'whiskey_legacy', name: 'Master Distiller Deals', type: 'cost', baseCost: 20 },
+    ],
+  },
 ];
 const NODE_BY_ID = {};
 PRESTIGE_TREE.forEach(t => t.nodes.forEach(n => { NODE_BY_ID[n.id] = Object.assign({}, n, { tier: t.tier }); }));
 
-function defaultRunState() {
+// --- Store: cosmetics and permanent boosts, all paid for with prestige
+// points (never cash) so nothing here scales strangely across runs. ---
+const BACKGROUND_THEMES = {
+  bg_classic: 'linear-gradient(180deg, #241A12 0%, #1B140D 100%)',
+  bg_midnight: 'linear-gradient(180deg, #131A24 0%, #070910 100%)',
+  bg_sunset: 'linear-gradient(180deg, #3A1F12 0%, #170B06 100%)',
+  bg_forest: 'linear-gradient(180deg, #16221A 0%, #0A100C 100%)',
+  bg_copper: 'linear-gradient(180deg, #2E1D0E 0%, #1A1006 100%)',
+  bg_oakcellar: 'linear-gradient(180deg, #241811 0%, #120C07 100%)',
+};
+const ICON_PACKS = {
+  icons_classic: { cash: '💰', debt: '⚠️', income: '📈', lifetime: '🏆', tap: '⚡', lock: '🔒', upgrade: '⬆️', prestige: '✨', reset: '🔄' },
+  icons_vat: { cash: '🛢️', debt: '🔥', income: '📊', lifetime: '🥇', tap: '💥', lock: '🔒', upgrade: '🔺', prestige: '🌟', reset: '♻️' },
+  icons_lab: { cash: '⚗️', debt: '🌡️', income: '🎚️', lifetime: '🏅', tap: '🔔', lock: '🔒', upgrade: '🔧', prestige: '💫', reset: '🔁' },
+};
+
+// Equipment boosts are modeled on real low-end vs high-end gear for each
+// beverage type — a homebrew-store starter piece, then the kind of
+// equipment an actual commercial producer would step up to. Each boosts
+// only its own category's rate, and both tiers stack together.
+const STORE_ITEMS = [
+  { id: 'bg_classic', type: 'background', name: 'Classic Copper', cost: 0, desc: 'The original brewhouse look.' },
+  { id: 'bg_midnight', type: 'background', name: 'Midnight Cellar', cost: 8, desc: 'A cool, moody cellar backdrop.' },
+  { id: 'bg_sunset', type: 'background', name: 'Sunset Tavern', cost: 8, desc: 'Warm firelight tones.' },
+  { id: 'bg_forest', type: 'background', name: 'Forest Lodge', cost: 10, desc: 'Deep green, out in the woods.' },
+  { id: 'bg_copper', type: 'background', name: 'Copper Distillery', cost: 12, desc: 'Warm still-house glow.' },
+  { id: 'bg_oakcellar', type: 'background', name: 'Oak Cellar', cost: 12, desc: 'Dark barrel-aging room.' },
+
+  { id: 'icons_classic', type: 'iconPack', name: 'Classic Icons', cost: 0, desc: 'The default icon set.' },
+  { id: 'icons_vat', type: 'iconPack', name: 'Vat & Barrel', cost: 6, desc: 'Swaps the ledger icons for vats and barrels.' },
+  { id: 'icons_lab', type: 'iconPack', name: 'Lab & Gauge', cost: 10, desc: 'Alembics, thermometers, and wrenches.' },
+
+  { id: 'boost_taps', type: 'boost', name: 'Quick Hands', cost: 20, desc: '-30% tap cooldown, permanently, on every beverage.' },
+  { id: 'boost_double', type: 'boost', name: 'Double Production', cost: 50, desc: '2× rate on every beverage you own, forever. Stacks with everything.' },
+
+  { id: 'equip_beer_1', type: 'categoryBoost', category: 'beer', boostPct: 0.08, name: 'Plastic Fermenter Bucket', cost: 10, desc: 'Homebrew-shop basic. +8% rate on all beers.' },
+  { id: 'equip_beer_2', type: 'categoryBoost', category: 'beer', boostPct: 0.20, name: 'Stainless Conical Fermenter', cost: 30, desc: 'Temperature-controlled, professional-grade. +20% rate on all beers.' },
+
+  { id: 'equip_cider_1', type: 'categoryBoost', category: 'cider', boostPct: 0.08, name: 'Hand-Crank Apple Press', cost: 14, desc: 'Slow, but it works. +8% rate on all ciders.' },
+  { id: 'equip_cider_2', type: 'categoryBoost', category: 'cider', boostPct: 0.20, name: 'Hydraulic Rack & Cloth Press', cost: 38, desc: 'What real cideries actually run. +20% rate on all ciders.' },
+
+  { id: 'equip_wine_1', type: 'categoryBoost', category: 'wine', boostPct: 0.08, name: 'Basic Grape Crusher-Destemmer', cost: 18, desc: 'Small-batch starter gear. +8% rate on all wines.' },
+  { id: 'equip_wine_2', type: 'categoryBoost', category: 'wine', boostPct: 0.20, name: 'French Oak Barrel Cellar', cost: 46, desc: 'Proper temperature-controlled aging. +20% rate on all wines.' },
+
+  { id: 'equip_whiskey_1', type: 'categoryBoost', category: 'whiskey', boostPct: 0.08, name: 'Copper Pot Still', cost: 24, desc: 'The traditional way. +8% rate on all whiskeys.' },
+  { id: 'equip_whiskey_2', type: 'categoryBoost', category: 'whiskey', boostPct: 0.20, name: 'Charred Oak Rickhouse', cost: 58, desc: 'A full aging warehouse. +20% rate on all whiskeys.' },
+];
+const STORE_ITEM_BY_ID = {};
+STORE_ITEMS.forEach(i => { STORE_ITEM_BY_ID[i.id] = i; });
+
+function isItemOwned(state, itemId) {
+  const item = STORE_ITEM_BY_ID[itemId];
+  return !!(item && (item.cost === 0 || (state.store && state.store.owned && state.store.owned[itemId])));
+}
+function effectiveTapCooldown(state) {
+  return isItemOwned(state, 'boost_taps') ? Math.round(TAP_COOLDOWN * 0.7) : TAP_COOLDOWN;
+}
+function categoryEquipmentMultiplier(category, state) {
+  return STORE_ITEMS.reduce((mult, item) => {
+    if (item.type === 'categoryBoost' && item.category === category && isItemOwned(state, item.id)) {
+      return mult + item.boostPct;
+    }
+    return mult;
+  }, 1);
+}
+
+// --- Tasks: 3 drawn at random each time a run starts (including after
+// prestige). Completing one pays out bonus prestige points immediately,
+// on top of whatever the run itself earns you at prestige time. ---
+const TASKS_PER_RUN = 3;
+function earnRunTarget(lvl) { return Math.round(500 * Math.pow(1.6, lvl)); }
+function payRunTarget(lvl) { return Math.round(300 * Math.pow(1.5, lvl)); }
+function investRunTarget(lvl) { return Math.round(200 * Math.pow(1.6, lvl)); }
+function incomeRateTarget(lvl) { return Math.round(5 * Math.pow(1.8, lvl)); }
+function spendPrestigeTarget(lvl) { return Math.round(3 * Math.pow(1.5, lvl)); }
+
+const TASK_POOL = [
+  {
+    id: 'own4', desc: () => 'Own 4 beverages', minLevel: 0,
+    target: () => 4,
+    progress: (state) => Object.values(state.beverages).filter(b => b.level > 0).length,
+  },
+  {
+    id: 'tap15', desc: () => 'Tap beverages 15 times', minLevel: 0,
+    target: () => 15,
+    progress: (state) => state.tapCount || 0,
+  },
+  {
+    id: 'clear_debt', desc: () => "Pay off this run's debt completely", minLevel: 0,
+    target: () => 1,
+    progress: (state) => isDebtCleared(state.debt) ? 1 : 0,
+  },
+  {
+    id: 'level5', desc: () => 'Get any beverage to Proficiency Lv.5', minLevel: 0,
+    target: () => 5,
+    progress: (state) => Object.values(state.beverages).reduce((m, b) => Math.max(m, b.level || 0), 0),
+  },
+  {
+    id: 'earn_run', desc: (lvl) => `Earn ${fmtMoney(earnRunTarget(lvl))} this run`, minLevel: 1,
+    target: earnRunTarget,
+    progress: (state) => Math.max(0, Math.round(state.totalEarned - (state.totalEarnedAtRunStart || 0))),
+  },
+  {
+    id: 'pay_run', desc: (lvl) => `Pay ${fmtMoney(payRunTarget(lvl))} toward the loan (or invest) this run`, minLevel: 1,
+    target: payRunTarget,
+    progress: (state) => Math.round(state.totalPaid || 0),
+  },
+  {
+    id: 'own7', desc: () => 'Own 7 beverages', minLevel: 1,
+    target: () => 7,
+    progress: (state) => Object.values(state.beverages).filter(b => b.level > 0).length,
+  },
+  {
+    id: 'invest_run', desc: (lvl) => `Invest ${fmtMoney(investRunTarget(lvl))} once debt is clear`, minLevel: 1,
+    target: investRunTarget,
+    progress: (state) => Math.round(state.invested || 0),
+  },
+  {
+    id: 'income_rate', desc: (lvl) => `Reach ${fmtMoney(incomeRateTarget(lvl))}/sec income`, minLevel: 0,
+    target: incomeRateTarget,
+    progress: (state) => Math.round(totalRateOf(state)),
+  },
+  {
+    id: 'spend_prestige', desc: (lvl) => `Spend ${spendPrestigeTarget(lvl)} prestige points in the Tree`, minLevel: 1,
+    target: spendPrestigeTarget,
+    progress: (state) => state.prestigeSpentThisRun || 0,
+  },
+  {
+    id: 'store_unlock', desc: () => 'Unlock an item in the Store', minLevel: 2,
+    target: () => 1,
+    progress: (state) => state.storeItemsBoughtThisRun || 0,
+  },
+  {
+    id: 'first_cider', desc: () => 'Unlock your first cider', minLevel: 2,
+    target: () => 1,
+    progress: (state) => BEVERAGES.some(b => b.category === 'cider' && (state.beverages[b.id] && state.beverages[b.id].level > 0)) ? 1 : 0,
+  },
+  {
+    id: 'first_wine', desc: () => 'Unlock your first wine', minLevel: 4,
+    target: () => 1,
+    progress: (state) => BEVERAGES.some(b => b.category === 'wine' && (state.beverages[b.id] && state.beverages[b.id].level > 0)) ? 1 : 0,
+  },
+  {
+    id: 'first_whiskey', desc: () => 'Unlock your first whiskey', minLevel: 6,
+    target: () => 1,
+    progress: (state) => BEVERAGES.some(b => b.category === 'whiskey' && (state.beverages[b.id] && state.beverages[b.id].level > 0)) ? 1 : 0,
+  },
+];
+const TASK_BY_ID = {};
+TASK_POOL.forEach(t => { TASK_BY_ID[t.id] = t; });
+
+function taskReward(prestigeLevel) { return 2 + Math.floor(prestigeLevel * 1.5); }
+function pickTasks(prestigeLevel) {
+  const lvl = prestigeLevel || 0;
+  const eligible = TASK_POOL.filter(t => t.minLevel <= lvl).map(t => t.id);
+  const ids = eligible.length >= TASKS_PER_RUN ? eligible : TASK_POOL.map(t => t.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+  }
+  return ids.slice(0, TASKS_PER_RUN);
+}
+
+// --- Brew Off: a timed boss-battle challenge. Once your prestige level
+// clears a boss's threshold, you can challenge them: earn the target amount
+// of cash within 60 seconds (production + tapping + everything else all
+// count) to win their trophy. Trophies are permanent and never lost, even
+// across prestige. Target numbers here are a first pass, not a final
+// balance — worth tuning once there's real play data on what income looks
+// like at each of these prestige levels.
+const BREW_OFF_DURATION_MS = 60000;
+const BREW_OFF_BOSSES = [
+  { id: 'boss10', minLevel: 10, name: 'Big Sal, the Brewhouse Bull', trophy: 'Bronze BrewMaster Trophy', icon: '🥉', target: 50000 },
+  { id: 'boss20', minLevel: 20, name: 'Coldbrew Katrina', trophy: 'Silver BrewMaster Trophy', icon: '🥈', target: 5000000 },
+  { id: 'boss50', minLevel: 50, name: 'The Vintner Baron', trophy: 'Gold BrewMaster Trophy', icon: '🥇', target: 500000000 },
+  { id: 'boss100', minLevel: 100, name: 'The Whiskey Wraith', trophy: 'Legendary BrewMaster Trophy', icon: '🏆', target: 100000000000 },
+];
+const BREW_OFF_BY_ID = {};
+BREW_OFF_BOSSES.forEach(b => { BREW_OFF_BY_ID[b.id] = b; });
+
+function defaultRunState(prestigeLevel) {
   const beverages = {};
   BEVERAGES.forEach(b => { beverages[b.id] = { level: b.unlockCost === 0 ? 1 : 0, lastTap: 0 }; });
-  return { cash: STARTING_CASH, debt: STARTING_DEBT, totalPaid: 0, beverages };
+  return {
+    cash: STARTING_CASH, debt: STARTING_DEBT, totalPaid: 0, invested: 0, beverages,
+    tapCount: 0, totalEarnedAtRunStart: 0, prestigeSpentThisRun: 0, storeItemsBoughtThisRun: 0,
+    tasks: { list: pickTasks(prestigeLevel), completed: {} },
+    brewOff: null,
+  };
 }
 
 function defaultState() {
-  return Object.assign({}, defaultRunState(), {
+  return Object.assign({}, defaultRunState(0), {
     totalEarned: 0,
     lastSeen: Date.now(),
     prestige: 0,
     prestigePoints: 0,
     prestigeSpent: 0,
     prestigeUpgrades: {},
+    tutorialDismissed: false,
+    store: { background: 'bg_classic', iconPack: 'icons_classic', owned: {} },
+    autoTapEnabled: false,
+    trophies: {},
   });
 }
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtNum(n) {
+  return Math.round(n).toLocaleString();
+}
 function costLabel(n) { return n <= 0 ? 'Free' : fmtMoney(n); }
 function rankOf(state, nodeId) { return state.prestigeUpgrades[nodeId] || 0; }
+function beverageNodesMaxed(bevId, state) {
+  return rankOf(state, `${bevId}_rate`) >= NODE_MAX_RANK && rankOf(state, `${bevId}_cost`) >= NODE_MAX_RANK;
+}
+function isTreeComplete(state) {
+  return PRESTIGE_TREE.every(tier => tier.nodes.every(node => rankOf(state, node.id) >= NODE_MAX_RANK));
+}
+function anyBeverageMaxed(state) {
+  return BEVERAGES.some(b => beverageNodesMaxed(b.id, state));
+}
+function autoTappingCount(state) {
+  return BEVERAGES.filter(b => {
+    const cur = state.beverages[b.id];
+    return cur && cur.level > 0 && beverageNodesMaxed(b.id, state);
+  }).length;
+}
 function rateMultiplier(bevId, state) {
   const rank = rankOf(state, `${bevId}_rate`);
   return 1 + rank * RATE_EFFECT_PER_RANK;
@@ -183,7 +563,9 @@ function costMultiplier(bevId, state) {
 }
 function rateOf(bev, level, state) {
   if (level <= 0) return 0;
-  return bev.baseRate * level * rateMultiplier(bev.id, state);
+  let r = bev.baseRate * level * rateMultiplier(bev.id, state) * categoryEquipmentMultiplier(bev.category, state);
+  if (isItemOwned(state, 'boost_double')) r *= 2;
+  return r;
 }
 function effectiveUnlockCost(bev, state) {
   return Math.max(0, Math.round(bev.unlockCost * costMultiplier(bev.id, state)));
@@ -194,8 +576,11 @@ function effectiveUpgradeBaseCost(bev, state) {
 function upgradeCostOf(bev, level, state) {
   return Math.ceil(effectiveUpgradeBaseCost(bev, state) * Math.pow(bev.growth, Math.max(0, level - 1)));
 }
+function investIncomeRate(state) {
+  return (state.invested || 0) * INVEST_RATE_PER_SEC;
+}
 function totalRateOf(state) {
-  return BEVERAGES.reduce((sum, b) => sum + rateOf(b, (state.beverages[b.id] && state.beverages[b.id].level) || 0, state), 0);
+  return BEVERAGES.reduce((sum, b) => sum + rateOf(b, (state.beverages[b.id] && state.beverages[b.id].level) || 0, state), 0) + investIncomeRate(state);
 }
 function nodeCostAt(node, rank) {
   return Math.ceil(node.baseCost * Math.pow(NODE_COST_GROWTH, rank));
@@ -227,6 +612,9 @@ function Fermentary() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmingPrestige, setConfirmingPrestige] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [view, setView] = useState('game');
   const toastTimer = useRef(null);
   const stateRef = useRef(null);
   stateRef.current = state;
@@ -243,17 +631,35 @@ function Fermentary() {
       } catch (e) { loadedState = null; }
 
       const base = loadedState || defaultState();
+      // Merge in any beverages added since this save was created (e.g. new
+      // cider/wine tiers), and treat a save that already existed before the
+      // tutorial existed as one that doesn't need to see it.
+      base.beverages = Object.assign({}, defaultRunState().beverages, base.beverages);
+      if (loadedState && base.tutorialDismissed === undefined) base.tutorialDismissed = true;
+      if (!base.store) base.store = { background: 'bg_classic', iconPack: 'icons_classic', owned: {} };
+      if (base.autoTapEnabled === undefined) base.autoTapEnabled = false;
+      if (!base.trophies) base.trophies = {};
+      if (base.brewOff === undefined) base.brewOff = null;
+      if (base.invested === undefined) base.invested = 0;
+      if (base.tapCount === undefined) base.tapCount = 0;
+      if (base.prestigeSpentThisRun === undefined) base.prestigeSpentThisRun = 0;
+      if (base.storeItemsBoughtThisRun === undefined) base.storeItemsBoughtThisRun = 0;
+      if (base.totalEarnedAtRunStart === undefined) base.totalEarnedAtRunStart = base.totalEarned || 0;
+      if (!base.tasks) base.tasks = { list: pickTasks(base.prestige || 0), completed: {} };
+
       const nowTs = Date.now();
       const elapsedSec = Math.max(0, (nowTs - (base.lastSeen || nowTs)) / 1000);
 
       const rate = totalRateOf(base);
       const earned = rate * elapsedSec;
-      const debt = base.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, elapsedSec);
+      const startingDebt = settleDebt(base.debt);
+      const debt = startingDebt > 0 ? settleDebt(startingDebt * Math.pow(1 + INTEREST_RATE_PER_SEC, elapsedSec)) : 0;
 
       const next = Object.assign({}, base, { cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs });
       if (!cancelled) {
         setState(next);
         setLoaded(true);
+        if (!next.tutorialDismissed) setTutorialOpen(true);
         if (loadedState && elapsedSec > 20) {
           showToast(`Welcome back — earned ${fmtMoney(earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
         }
@@ -268,10 +674,35 @@ function Fermentary() {
     const id = setInterval(() => {
       setState(prev => {
         if (!prev) return prev;
+        let cash = prev.cash;
+        let totalEarned = prev.totalEarned;
+        let tapCount = prev.tapCount || 0;
+        let beverages = prev.beverages;
+
+        if (prev.autoTapEnabled) {
+          const now = Date.now();
+          const cooldown = effectiveTapCooldown(prev);
+          let changed = false;
+          const nextBeverages = Object.assign({}, beverages);
+          BEVERAGES.forEach(bev => {
+            const cur = beverages[bev.id];
+            if (!cur || cur.level < 1) return;
+            if (!beverageNodesMaxed(bev.id, prev)) return;
+            if (now - (cur.lastTap || 0) < cooldown) return;
+            const bonus = rateOf(bev, cur.level, prev) * TAP_SECONDS_WORTH;
+            cash += bonus;
+            totalEarned += bonus;
+            tapCount += 1;
+            nextBeverages[bev.id] = Object.assign({}, cur, { lastTap: now });
+            changed = true;
+          });
+          if (changed) beverages = nextBeverages;
+        }
+
         const rate = totalRateOf(prev);
         const income = rate * dt;
-        const debt = prev.debt > 0 ? prev.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, dt) : 0;
-        return Object.assign({}, prev, { cash: prev.cash + income, totalEarned: prev.totalEarned + income, debt });
+        const debt = isDebtCleared(prev.debt) ? 0 : settleDebt(prev.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, dt));
+        return Object.assign({}, prev, { cash: cash + income, totalEarned: totalEarned + income, debt, tapCount, beverages });
       });
     }, TICK_MS);
     return () => clearInterval(id);
@@ -298,13 +729,57 @@ function Fermentary() {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
+  useEffect(() => {
+    if (!loaded || !state || !state.tasks) return;
+    const newlyDone = state.tasks.list.filter(id => {
+      if (state.tasks.completed[id]) return false;
+      const task = TASK_BY_ID[id];
+      if (!task) return false;
+      return task.progress(state) >= task.target(state.prestige);
+    });
+    if (newlyDone.length === 0) return;
+    const reward = taskReward(state.prestige);
+    setState(prev => {
+      if (!prev || !prev.tasks) return prev;
+      const completed = Object.assign({}, prev.tasks.completed);
+      let gained = 0;
+      newlyDone.forEach(id => {
+        if (!completed[id]) { completed[id] = true; gained += reward; }
+      });
+      if (gained === 0) return prev;
+      return Object.assign({}, prev, { prestigePoints: prev.prestigePoints + gained, tasks: Object.assign({}, prev.tasks, { completed }) });
+    });
+    newlyDone.forEach(id => showToast(`Task complete: ${TASK_BY_ID[id].desc(state.prestige)} (+${reward} pts)`, 'good'));
+  }, [state, loaded]);
+
+  useEffect(() => {
+    if (!loaded || !state || !state.brewOff) return;
+    const bo = state.brewOff;
+    const boss = BREW_OFF_BY_ID[bo.bossId];
+    if (!boss) return;
+    const earned = Math.max(0, state.totalEarned - bo.startEarned);
+    const now = Date.now();
+
+    if (earned >= boss.target) {
+      setState(prev => (prev && prev.brewOff && prev.brewOff.bossId === bo.bossId)
+        ? Object.assign({}, prev, { brewOff: null, trophies: Object.assign({}, prev.trophies, { [boss.id]: true }) })
+        : prev);
+      showToast(`🏆 You beat ${boss.name}! ${boss.trophy} earned.`, 'good');
+    } else if (now >= bo.endsAt) {
+      setState(prev => (prev && prev.brewOff && prev.brewOff.bossId === bo.bossId)
+        ? Object.assign({}, prev, { brewOff: null })
+        : prev);
+      showToast(`${boss.name} wins this round. Try again anytime.`, 'warn');
+    }
+  }, [state, loaded]);
+
   if (!loaded || !state) {
     return h('div', { style: { minHeight: '100vh', background: '#241A12', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C9BBA3', fontFamily: 'Inter, sans-serif' } }, 'Uncorking the ledger…');
   }
 
   const totalPaid = state.totalPaid;
   const totalRate = totalRateOf(state);
-  const debtCleared = state.debt <= 1;
+  const debtCleared = isDebtCleared(state.debt);
 
   function unlockBeverage(id) {
     const bev = BEVERAGES.find(b => b.id === id);
@@ -334,10 +809,10 @@ function Fermentary() {
     setState(prev => {
       const cur = prev.beverages[id];
       if (!cur || cur.level < 1) return prev;
-      if (Date.now() - (cur.lastTap || 0) < TAP_COOLDOWN) return prev;
+      if (Date.now() - (cur.lastTap || 0) < effectiveTapCooldown(prev)) return prev;
       const bonus = rateOf(bev, cur.level, prev) * TAP_SECONDS_WORTH;
       const beverages = Object.assign({}, prev.beverages, { [id]: Object.assign({}, cur, { lastTap: Date.now() }) });
-      return Object.assign({}, prev, { cash: prev.cash + bonus, totalEarned: prev.totalEarned + bonus, beverages });
+      return Object.assign({}, prev, { cash: prev.cash + bonus, totalEarned: prev.totalEarned + bonus, beverages, tapCount: (prev.tapCount || 0) + 1 });
     });
   }
 
@@ -345,19 +820,29 @@ function Fermentary() {
     setState(prev => {
       const pay = Math.min(amount, prev.cash, prev.debt);
       if (pay <= 0) return prev;
-      return Object.assign({}, prev, { cash: prev.cash - pay, debt: prev.debt - pay, totalPaid: prev.totalPaid + pay });
+      return Object.assign({}, prev, { cash: prev.cash - pay, debt: settleDebt(prev.debt - pay), totalPaid: prev.totalPaid + pay });
+    });
+  }
+
+  function investCash(amount) {
+    setState(prev => {
+      if (!isDebtCleared(prev.debt)) return prev;
+      const amt = Math.min(amount, prev.cash);
+      if (amt <= 0) return prev;
+      return Object.assign({}, prev, { cash: prev.cash - amt, invested: (prev.invested || 0) + amt, totalPaid: prev.totalPaid + amt });
     });
   }
 
   function doPrestige() {
     setState(prev => {
-      if (prev.debt > 1) return prev;
+      if (!isDebtCleared(prev.debt)) return prev;
       const newLevel = prev.prestige + 1;
       const pointsGained = pointsForPrestige(prev.prestige);
       showToast(`Prestiged to generation ${newLevel + 1} — +${pointsGained} prestige points.`, 'good');
-      return Object.assign({}, prev, defaultRunState(), {
+      return Object.assign({}, prev, defaultRunState(newLevel), {
         debt: debtForRun(newLevel),
         totalEarned: prev.totalEarned,
+        totalEarnedAtRunStart: prev.totalEarned,
         lastSeen: Date.now(),
         prestige: newLevel,
         prestigePoints: prev.prestigePoints + pointsGained,
@@ -378,14 +863,75 @@ function Fermentary() {
       return Object.assign({}, prev, {
         prestigePoints: prev.prestigePoints - cost,
         prestigeSpent: prev.prestigeSpent + cost,
+        prestigeSpentThisRun: (prev.prestigeSpentThisRun || 0) + cost,
         prestigeUpgrades: Object.assign({}, prev.prestigeUpgrades, { [nodeId]: rank + 1 }),
       });
     });
   }
 
+  function buyStoreItem(itemId) {
+    const item = STORE_ITEM_BY_ID[itemId];
+    setState(prev => {
+      if (prev.store.owned[itemId]) return prev;
+      if (prev.prestigePoints < item.cost) { showToast('Not enough prestige points.', 'warn'); return prev; }
+      const owned = Object.assign({}, prev.store.owned, { [itemId]: true });
+      const store = Object.assign({}, prev.store, { owned });
+      if (item.type === 'background') store.background = itemId;
+      if (item.type === 'iconPack') store.iconPack = itemId;
+      showToast(`${item.name} unlocked!`, 'good');
+      return Object.assign({}, prev, { prestigePoints: prev.prestigePoints - item.cost, store, storeItemsBoughtThisRun: (prev.storeItemsBoughtThisRun || 0) + 1 });
+    });
+  }
+
+  function equipStoreItem(itemId) {
+    const item = STORE_ITEM_BY_ID[itemId];
+    setState(prev => {
+      if (!isItemOwned(prev, itemId)) return prev;
+      const store = Object.assign({}, prev.store);
+      if (item.type === 'background') store.background = itemId;
+      if (item.type === 'iconPack') store.iconPack = itemId;
+      return Object.assign({}, prev, { store });
+    });
+  }
+
+  function closeTutorial() {
+    setTutorialOpen(false);
+    setTutorialStep(0);
+    setState(prev => prev && Object.assign({}, prev, { tutorialDismissed: true }));
+  }
+  function openTutorial() {
+    setTutorialStep(0);
+    setTutorialOpen(true);
+  }
+  function toggleAutoTap() {
+    setState(prev => {
+      if (!anyBeverageMaxed(prev)) return prev;
+      return Object.assign({}, prev, { autoTapEnabled: !prev.autoTapEnabled });
+    });
+  }
+
+  function startBrewOff(bossId) {
+    const boss = BREW_OFF_BY_ID[bossId];
+    setState(prev => {
+      if (!boss) return prev;
+      if (prev.prestige < boss.minLevel) return prev;
+      if (prev.trophies[bossId]) return prev;
+      if (prev.brewOff) return prev;
+      const now = Date.now();
+      showToast(`Brew Off started against ${boss.name} — 60 seconds!`, 'neutral');
+      return Object.assign({}, prev, { brewOff: { bossId, startEarned: prev.totalEarned, startedAt: now, endsAt: now + BREW_OFF_DURATION_MS } });
+    });
+  }
+  function cancelBrewOff() {
+    setState(prev => prev && Object.assign({}, prev, { brewOff: null }));
+  }
+
   const payBtnStyle = { flex: 1, background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer' };
 
-  return h('div', { style: { minHeight: '100vh', background: 'linear-gradient(180deg, #241A12 0%, #1B140D 100%)', fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 } },
+  const icons = ICON_PACKS[state.store.iconPack] || ICON_PACKS.icons_classic;
+  const bgGradient = BACKGROUND_THEMES[state.store.background] || BACKGROUND_THEMES.bg_classic;
+
+  return h('div', { style: { minHeight: '100vh', background: bgGradient, fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 } },
     h('style', null, `
       @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
@@ -408,39 +954,85 @@ function Fermentary() {
       onAnimationEnd: () => { clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3200); },
     }, toast.msg),
 
-    h('div', { style: { padding: '20px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
-      h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10 } },
-        h('h1', { style: { fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 } }, 'The Fermentary'),
+    tutorialOpen && h(TutorialOverlay, { step: tutorialStep, onNext: () => setTutorialStep(s => Math.min(TUTORIAL_STEPS.length - 1, s + 1)), onBack: () => setTutorialStep(s => Math.max(0, s - 1)), onClose: closeTutorial }),
+
+    h('div', { style: { padding: '14px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 } },
+        h('button', {
+          onClick: () => setView(v => v === 'tree' ? 'game' : 'tree'), 'aria-label': 'Prestige tree',
+          style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'tree' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'tree' ? '#6B5A9C' : '#5A4630'}`, color: view === 'tree' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+        }, view === 'tree' ? '← Brewery' : '🌳 Tree'),
+        h('button', {
+          onClick: () => setView(v => v === 'store' ? 'game' : 'store'), 'aria-label': 'Store',
+          style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'store' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'store' ? '#6B5A9C' : '#5A4630'}`, color: view === 'store' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+        }, view === 'store' ? '← Brewery' : '🛍️ Store'),
+        h('button', {
+          onClick: () => setView(v => v === 'achievements' ? 'game' : 'achievements'), 'aria-label': 'Achievements',
+          style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'achievements' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'achievements' ? '#6B5A9C' : '#5A4630'}`, color: view === 'achievements' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+        }, view === 'achievements' ? '← Brewery' : '🏆 Trophies'),
+        h('button', {
+          onClick: openTutorial, 'aria-label': 'Show tutorial',
+          style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        }, '?')
+      ),
+      h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
+        h('h1', { style: { fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 } }, 'Idle Brew'),
         h('span', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace' } }, `gen. ${state.prestige + 1}`)
       ),
-      h('p', { style: { margin: '4px 0 0', fontSize: 12.5, color: '#A6957A' } }, "Every pour adds up — even when you're not watching.")
+      h('p', { style: { margin: '4px 0 0', fontSize: 12.5, color: '#A6957A' } }, "Every pour adds up — even when you're not watching."),
+      state.autoTapEnabled && autoTappingCount(state) > 0 && h('div', { style: { marginTop: 4, fontSize: 10.5, color: '#D4AF2C', fontWeight: 600 } }, `🤖 Auto-Tap running on ${autoTappingCount(state)} mastered beverage${autoTappingCount(state) === 1 ? '' : 's'}`)
     ),
+
+    view === 'store'
+      ? h(StoreView, { state: state, icons: icons, onBuy: buyStoreItem, onEquip: equipStoreItem })
+      : view === 'tree'
+      ? h(PrestigeTreeView, { state: state, icons: icons, onBuy: buyPrestigeNode, onToggleAutoTap: toggleAutoTap })
+      : view === 'achievements'
+      ? h(AchievementsView, { state: state, icons: icons, onStartBrewOff: startBrewOff, onCancelBrewOff: cancelBrewOff })
+      : h(React.Fragment, null,
 
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' } },
-      h(LedgerCard, { icon: '💰', label: 'Cash', value: fmtMoney(state.cash), color: '#E0A93E' }),
-      h(LedgerCard, { icon: '⚠️', label: 'Debt', value: fmtMoney(state.debt), color: debtCleared ? '#6B8A5E' : '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
-      h(LedgerCard, { icon: '📈', label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
-      h(LedgerCard, { icon: '🏆', label: 'Lifetime earned', value: fmtMoney(state.totalEarned), color: '#B49BD1' })
+      h(LedgerCard, { icon: icons.cash, label: 'Cash', value: fmtMoney(state.cash), color: '#E0A93E' }),
+      debtCleared
+        ? h(LedgerCard, { icon: '📥', label: 'Invested', value: fmtMoney(state.invested || 0), color: '#9CC28A' })
+        : h(LedgerCard, { icon: icons.debt, label: 'Debt', value: fmtMoney(state.debt), color: '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
+      h(LedgerCard, { icon: icons.income, label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
+      h(LedgerCard, { icon: icons.lifetime, label: 'Lifetime earned', value: fmtMoney(state.totalEarned), color: '#B49BD1' })
     ),
 
-    h('div', { style: { padding: '0 16px 16px', display: 'flex', gap: 8 } },
-      h('button', { className: 'btn', disabled: state.cash <= 0 || debtCleared, onClick: () => payDebt(Math.min(state.cash, 50)), style: payBtnStyle }, 'Pay $50'),
-      h('button', { className: 'btn', disabled: state.cash <= 0 || debtCleared, onClick: () => payDebt(state.cash), style: Object.assign({}, payBtnStyle, { background: '#4A3A24', borderColor: '#6B5636' }) }, 'Pay all cash')
+    h('button', {
+      onClick: () => setView('tree'),
+      style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: 'calc(100% - 32px)', margin: '0 16px 14px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px', cursor: 'pointer' },
+    },
+      h('span', { style: { fontSize: 12.5, color: '#C9B8E8', fontWeight: 600 } }, `${icons.prestige} ${state.prestigePoints} prestige points`),
+      h('span', { style: { fontSize: 11, color: '#8A7CA0' } }, 'Spend in Tree →')
     ),
 
-    h('div', { style: { margin: '0 16px 16px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: 12 } },
-      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, color: '#C9B8E8', fontSize: 12, fontWeight: 600 } },
-          h('span', { style: { fontSize: 14 } }, '✨'), ` Prestige · ${state.prestigePoints} pts available`
-        ),
-        h('span', { style: { fontSize: 10.5, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' } }, `gen. ${state.prestige + 1}`)
-      ),
-      !debtCleared && h('div', { style: { fontSize: 11, color: '#8A7CA0', marginTop: 6 } }, 'Clear your debt to prestige — reset the run, take on more debt next time, and earn points to spend below, permanently.'),
-      debtCleared && !confirmingPrestige && h('button', {
+    h(TasksCard, { state: state }),
+
+    !debtCleared && h('div', { style: { padding: '0 16px 16px', display: 'flex', gap: 8 } },
+      h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => payDebt(Math.min(state.cash, 50)), style: payBtnStyle }, 'Pay $50'),
+      h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => payDebt(state.cash), style: Object.assign({}, payBtnStyle, { background: '#4A3A24', borderColor: '#6B5636' }) }, 'Pay all cash')
+    ),
+
+    debtCleared && h('div', { style: { padding: '0 16px 6px' } },
+      h('div', { style: { fontSize: 10.5, color: '#8A7860', marginBottom: 8 } }, `Debt's clear — invest surplus cash instead. It keeps counting toward tier unlocks, and pays you ${fmtMoney(INVEST_RATE_PER_SEC * 100)}/sec back per $100 invested, forever.`),
+      h('div', { style: { display: 'flex', gap: 8 } },
+        h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => investCash(Math.min(state.cash, 50)), style: Object.assign({}, payBtnStyle, { background: '#2F3A2C', border: '1px solid #4E6247', color: '#9CC28A' }) }, 'Invest $50'),
+        h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => investCash(state.cash), style: Object.assign({}, payBtnStyle, { background: '#3A4A34', border: '1px solid #5E7C53', color: '#C4E0B5' }) }, 'Invest all cash')
+      )
+    ),
+
+    !debtCleared && h('div', { style: { margin: '0 16px 16px', fontSize: 11, color: '#8A7CA0', background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: '10px 14px' } },
+      'Clear your debt to prestige — reset the run, take on more debt next time, and earn points to spend permanently in the Tree.'
+    ),
+
+    debtCleared && h('div', { style: { margin: '0 16px 16px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: 12 } },
+      !confirmingPrestige && h('button', {
         className: 'btn', onClick: () => setConfirmingPrestige(true),
-        style: { marginTop: 8, width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
-      }, h('span', { style: { fontSize: 13 } }, '🔄'), ` Prestige now — earn ${pointsForPrestige(state.prestige)} points`),
-      debtCleared && confirmingPrestige && h('div', { style: { marginTop: 8 } },
+        style: { width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 },
+      }, h('span', { style: { fontSize: 13 } }, icons.reset), ` Prestige now — earn ${pointsForPrestige(state.prestige)} points`),
+      confirmingPrestige && h('div', null,
         h('div', { style: { fontSize: 11, color: '#C9B8E8', marginBottom: 8 } }, `This resets cash, debt, and beverage levels. Next run starts at ${fmtMoney(debtForRun(state.prestige + 1))} debt. Prestige Tree upgrades are never lost.`),
         h('div', { style: { display: 'flex', gap: 8 } },
           h('button', { className: 'btn', onClick: doPrestige, style: { flex: 1, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '8px 0', color: '#E5D9FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' } }, 'Confirm prestige'),
@@ -451,36 +1043,62 @@ function Fermentary() {
 
     h('div', { style: { padding: '0 16px' } },
       h(SectionLabel, { text: 'Beverages' }),
-      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
-        BEVERAGES.map(b => {
-          const unlockedTank = totalPaid >= b.unlockDebtPaid;
-          const cur = state.beverages[b.id];
-          return h(BeverageCard, {
-            key: b.id, bev: b, bevState: cur, debtUnlocked: unlockedTank, cash: state.cash,
-            rate: rateOf(b, cur.level, state),
-            nextRate: rateOf(b, cur.level + 1, state),
-            nextCost: cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state),
-            onUnlock: unlockBeverage, onUpgrade: upgradeBeverage, onTap: tapBeverage,
-          });
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 18 } },
+        Object.keys(CATEGORY_LABELS).map(cat => {
+          const items = BEVERAGES.filter(b => b.category === cat);
+          if (items.length === 0) return null;
+          return h('div', { key: cat },
+            h('div', { style: { fontSize: 11, fontWeight: 700, color: CATEGORY_STYLES[cat].accent, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' } }, CATEGORY_LABELS[cat]),
+            h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              items.map(b => {
+                const unlockedTank = totalPaid >= b.unlockDebtPaid;
+                const cur = state.beverages[b.id];
+                return h(BeverageCard, {
+                  key: b.id, bev: b, bevState: cur, debtUnlocked: unlockedTank, cash: state.cash, icons: icons, tapCooldown: effectiveTapCooldown(state),
+                  rate: rateOf(b, cur.level, state),
+                  nextRate: rateOf(b, cur.level + 1, state),
+                  nextCost: cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state),
+                  onUnlock: unlockBeverage, onUpgrade: upgradeBeverage, onTap: tapBeverage,
+                });
+              })
+            )
+          );
         })
-      )
-    ),
-
-    h('div', { style: { padding: '20px 16px 0' } },
-      h(SectionLabel, { text: 'Prestige tree' }),
-      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-        PRESTIGE_TREE.map(tier => h(PrestigeTierBlock, { key: tier.tier, tier: tier, state: state, onBuy: buyPrestigeNode }))
       )
     ),
 
     h('div', { style: { padding: '18px 16px 0', fontSize: 11, color: '#6B5D48', textAlign: 'center' } },
       "Progress saves automatically in this browser. Tap a brewing beverage for a quick bonus — it's worth more than just letting it run."
     )
+      )
   );
 }
 
 function SectionLabel(props) {
   return h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
+}
+
+function TasksCard(props) {
+  const { state } = props;
+  if (!state.tasks) return null;
+  const reward = taskReward(state.prestige);
+  return h('div', { style: { margin: '0 16px 14px', background: '#1E2A20', border: '1px solid #354A38', borderRadius: 10, padding: 12 } },
+    h('div', { style: { fontSize: 11, fontWeight: 700, color: '#9CC28A', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 } }, `📋 Tasks this run · +${reward} pts each`),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 7 } },
+      state.tasks.list.map(id => {
+        const task = TASK_BY_ID[id];
+        if (!task) return null;
+        const done = !!state.tasks.completed[id];
+        const target = task.target(state.prestige);
+        const progress = Math.min(target, task.progress(state));
+        return h('div', { key: id, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          h('span', { style: { fontSize: 13, color: done ? '#9CC28A' : '#4A5A45', flexShrink: 0 } }, done ? '✅' : '⬡'),
+          h('span', { style: { fontSize: 11.5, color: done ? '#8FAE85' : '#C9BBA3', flex: 1, textDecoration: done ? 'line-through' : 'none' } }, task.desc(state.prestige)),
+          h('span', { style: { fontSize: 10, color: '#6B8A5E', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } }, `${fmtNum(progress)}/${fmtNum(target)}`)
+        );
+      })
+    )
+  );
 }
 
 function LedgerCard(props) {
@@ -498,14 +1116,16 @@ function LedgerCard(props) {
 
 function BeverageCard(props) {
   const { bev, bevState, debtUnlocked, cash, rate, nextRate, nextCost, onUnlock, onUpgrade, onTap } = props;
+  const icons = props.icons || ICON_PACKS.icons_classic;
+  const tapCooldown = props.tapCooldown || TAP_COOLDOWN;
   const [pops, setPops] = useState([]);
   const owned = bevState.level > 0;
-  const tapReady = owned && Date.now() - (bevState.lastTap || 0) >= TAP_COOLDOWN;
+  const tapReady = owned && Date.now() - (bevState.lastTap || 0) >= tapCooldown;
 
   if (!debtUnlocked) {
     return h('div', { style: { background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' } },
-      h('span', { style: { fontSize: 16 } }, '🔒'),
-      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `${bev.name} — pay down $${bev.unlockDebtPaid} total to unlock`)
+      h('span', { style: { fontSize: 16 } }, icons.lock),
+      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `${bev.name} — pay down $${fmtNum(bev.unlockDebtPaid)} total to unlock`)
     );
   }
 
@@ -518,21 +1138,23 @@ function BeverageCard(props) {
     onTap(bev.id);
   }
 
+  const style = CATEGORY_STYLES[bev.category] || CATEGORY_STYLES.beer;
+
   return h('div', {
     className: owned ? 'tap-card' : '',
     onClick: owned ? handleTap : undefined,
-    style: { position: 'relative', background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 10, padding: 12, overflow: 'hidden' },
+    style: { position: 'relative', background: style.bg, border: `1px solid ${style.border}`, borderRadius: 10, padding: 12, overflow: 'hidden' },
   },
-    pops.map(p => h('div', { key: p.id, style: { position: 'absolute', top: 10, right: 14, fontSize: 13, fontWeight: 700, color: '#E0A93E', fontFamily: 'JetBrains Mono, monospace', animation: 'floatUp 0.7s ease forwards', pointerEvents: 'none' } }, p.text)),
+    pops.map(p => h('div', { key: p.id, style: { position: 'absolute', top: 10, right: 14, fontSize: 13, fontWeight: 700, color: style.accent, fontFamily: 'JetBrains Mono, monospace', animation: 'floatUp 0.7s ease forwards', pointerEvents: 'none' } }, p.text)),
     h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' } },
       h('div', null,
         h('div', { style: { fontSize: 14, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, bev.name),
         owned
-          ? h('div', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Proficiency Lv.${bevState.level} · ${fmtMoney(rate)}/sec`)
-          : h('div', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Not brewing yet · base ${fmtMoney(bev.baseRate)}/sec`)
+          ? h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Proficiency Lv.${bevState.level} · ${fmtMoney(rate)}/sec`)
+          : h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Not brewing yet · base ${fmtMoney(bev.baseRate)}/sec`)
       ),
-      owned && h('div', { style: { fontSize: 9.5, color: tapReady ? '#E0A93E' : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } },
-        h('span', { style: { fontSize: 11 } }, '⚡'), ' ', tapReady ? 'tap for bonus' : 'cooling down'
+      owned && h('div', { style: { fontSize: 9.5, color: tapReady ? style.accent : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } },
+        h('span', { style: { fontSize: 11 } }, icons.tap), ' ', tapReady ? 'tap for bonus' : 'cooling down'
       )
     ),
     h('div', { style: { marginTop: 10 } },
@@ -540,8 +1162,8 @@ function BeverageCard(props) {
         ? h('button', {
             className: 'btn', disabled: cash < nextCost,
             onClick: (e) => { e.stopPropagation(); onUpgrade(bev.id); },
-            style: { width: '100%', background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 7, padding: '8px 0', color: '#E0A93E', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 },
-          }, h('span', { style: { fontSize: 13 } }, '⬆️'), ` Improve proficiency — ${fmtMoney(nextCost)} → ${fmtMoney(nextRate)}/sec`)
+            style: { width: '100%', background: style.border, border: `1px solid ${style.accentSoft}`, borderRadius: 7, padding: '8px 0', color: style.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 },
+          }, h('span', { style: { fontSize: 13 } }, icons.upgrade), ` Improve proficiency — ${fmtMoney(nextCost)} → ${fmtMoney(nextRate)}/sec`)
         : h('button', {
             className: 'btn', disabled: cash < nextCost,
             onClick: (e) => { e.stopPropagation(); onUnlock(bev.id); },
@@ -551,37 +1173,272 @@ function BeverageCard(props) {
   );
 }
 
+function TreeNodeButton(props) {
+  const { node, pos, rank, maxed, selected, accent, onClick } = props;
+  const fillPct = Math.round((rank / NODE_MAX_RANK) * 100);
+  return h('button', {
+    onClick, 'aria-label': node.name,
+    style: {
+      position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
+      width: 44, height: 44, borderRadius: '50%', cursor: 'pointer', padding: 0,
+      border: `2px solid ${selected ? '#FFFFFF' : 'rgba(255,255,255,0.28)'}`,
+      background: `linear-gradient(to top, ${accent} ${fillPct}%, rgba(20,14,10,0.55) ${fillPct}%)`,
+      boxShadow: maxed ? `0 0 10px ${accent}` : '0 1px 4px rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 12, fontWeight: 800, color: '#FFF9EC', fontFamily: 'JetBrains Mono, monospace',
+      textShadow: '0 1px 2px rgba(0,0,0,0.6)', transition: 'transform 0.1s ease',
+    },
+  }, maxed ? '★' : String(rank));
+}
+
 function PrestigeTierBlock(props) {
   const { tier, state, onBuy } = props;
+  const icons = props.icons || ICON_PACKS.icons_classic;
+  const [selectedId, setSelectedId] = useState(tier.nodes[0].id);
   const tierUnlocked = state.prestigeSpent >= tier.requiredSpent;
-  return h('div', { style: { background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12, opacity: tierUnlocked ? 1 : 0.6 } },
-    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: tierUnlocked ? 8 : 0 } },
-      h('div', { style: { fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif' } }, tier.label),
-      !tierUnlocked && h('span', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 3 } },
-        h('span', { style: { fontSize: 10 } }, '🔒'), ` spend ${tier.requiredSpent} pts to unlock`
+
+  if (!tierUnlocked) {
+    return h('div', { style: { background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12, opacity: 0.6 } },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+        h('div', { style: { fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif' } }, tier.label),
+        h('span', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace', display: 'flex', alignItems: 'center', gap: 3 } },
+          h('span', { style: { fontSize: 10 } }, icons.lock), ` spend ${tier.requiredSpent} pts to unlock`
+        )
+      )
+    );
+  }
+
+  const category = (BEVERAGES.find(b => b.id === tier.nodes[0].beverageId) || {}).category || 'beer';
+  const catStyle = CATEGORY_STYLES[category];
+  const outline = GLASS_OUTLINES[category] || GLASS_OUTLINES.beer;
+  const indexTable = category === 'wine' ? WINE_NODE_INDICES : REAL_NODE_INDICES;
+  const realIndices = indexTable[tier.nodes.length] || indexTable[4];
+  const polygonPoints = outline.map(p => `${p.x},${p.y}`).join(' ');
+  const selectedNode = tier.nodes.find(n => n.id === selectedId) || tier.nodes[0];
+  const rank = rankOf(state, selectedNode.id);
+  const maxed = rank >= NODE_MAX_RANK;
+  const cost = maxed ? null : nodeCostAt(selectedNode, rank);
+  const bev = BEVERAGES.find(b => b.id === selectedNode.beverageId);
+  const desc = selectedNode.type === 'rate'
+    ? `+${Math.round(RATE_EFFECT_PER_RANK * 100)}% ${bev.name} rate / rank`
+    : `-${Math.round(COST_EFFECT_PER_RANK * 100)}% ${bev.name} costs / rank`;
+
+  return h('div', { style: { background: '#241A2E', border: '1px solid #3D3350', borderRadius: 10, padding: 12 } },
+    h('div', { style: { fontSize: 12, fontWeight: 700, color: '#C9B8E8', fontFamily: 'Fraunces, serif', marginBottom: 8 } }, tier.label),
+
+    h('div', { style: { position: 'relative', height: 190, margin: '4px auto 10px', maxWidth: 220 } },
+      h('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none', style: { position: 'absolute', inset: 0, width: '100%', height: '100%' } },
+        h('polygon', { points: polygonPoints, fill: `${catStyle.accent}22`, stroke: `${catStyle.accent}AA`, strokeWidth: 1.4, strokeLinejoin: 'round' }),
+        category === 'cider' && h('path', { d: 'M 75 32 A 16 16 0 0 1 75 68', fill: 'none', stroke: `${catStyle.accent}AA`, strokeWidth: 1.4 })
+      ),
+      outline.map((pt, i) => {
+        const nodeIdx = realIndices.indexOf(i);
+        if (nodeIdx === -1) {
+          return h('div', {
+            key: `deco-${i}`,
+            style: { position: 'absolute', left: `${pt.x}%`, top: `${pt.y}%`, transform: 'translate(-50%, -50%)', width: 7, height: 7, borderRadius: '50%', background: catStyle.accent, opacity: 0.5 },
+          });
+        }
+        const node = tier.nodes[nodeIdx];
+        return h(TreeNodeButton, {
+          key: node.id, node: node, pos: pt,
+          rank: rankOf(state, node.id), maxed: rankOf(state, node.id) >= NODE_MAX_RANK,
+          selected: node.id === selectedId, accent: catStyle.accent,
+          onClick: () => setSelectedId(node.id),
+        });
+      })
+    ),
+
+    h('div', { style: { background: '#2A2233', borderRadius: 8, padding: '9px 11px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
+      h('div', { style: { minWidth: 0 } },
+        h('div', { style: { fontSize: 11.5, fontWeight: 600, color: '#E5D9FF' } }, selectedNode.name, ' ', h('span', { style: { color: '#8A7CA0', fontWeight: 400 } }, `Lv.${rank}/${NODE_MAX_RANK}`)),
+        h('div', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' } }, desc)
+      ),
+      h('button', {
+        className: 'btn', disabled: maxed || state.prestigePoints < cost,
+        onClick: () => onBuy(selectedNode.id),
+        style: { flexShrink: 0, background: maxed ? 'none' : '#4A3D6B', border: `1px solid ${maxed ? '#3D3350' : '#6B5A9C'}`, borderRadius: 6, padding: '6px 10px', color: maxed ? '#8A7CA0' : '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: maxed ? 'default' : 'pointer' },
+      }, maxed ? 'Maxed' : `${cost} pt${cost === 1 ? '' : 's'}`)
+    )
+  );
+}
+
+function PrestigeTreeView(props) {
+  const { state, icons, onBuy, onToggleAutoTap } = props;
+  const anyMastered = anyBeverageMaxed(state);
+  const complete = isTreeComplete(state);
+  return h('div', { style: { padding: '4px 16px 0' } },
+    h('div', { style: { margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px' } },
+      h('div', { style: { fontSize: 12, color: '#C9B8E8', fontWeight: 600 } }, `${icons.prestige} ${state.prestigePoints} prestige points to spend`),
+      h('div', { style: { fontSize: 10.5, color: '#8A7CA0', marginTop: 3 } }, 'Permanent upgrades — never lost, even when you prestige.')
+    ),
+    anyMastered && h('div', { style: { margin: '0 0 18px', background: 'linear-gradient(135deg, #3A2E1A, #2A2233)', border: '1px solid #D4AF2C', borderRadius: 10, padding: '12px 14px' } },
+      h('div', { style: { fontSize: 12.5, color: '#F0D98C', fontWeight: 700, marginBottom: 4 } }, complete ? '🏆 Tree Mastered' : '⭐ Beverage Mastered'),
+      h('div', { style: { fontSize: 10.5, color: '#C9BBA3', marginBottom: 10, lineHeight: 1.5 } },
+        complete
+          ? 'Every node in the tree is maxed. Turn on Auto-Tap and every beverage taps itself for its bonus the moment it comes off cooldown.'
+          : "Any beverage with both its Recipe and Deals nodes fully maxed (Lv.5/5) will tap itself automatically once Auto-Tap is on — no need to max the whole tree first. More beverages join in as you max out their nodes."
+      ),
+      h('button', {
+        className: 'btn', onClick: onToggleAutoTap,
+        style: { width: '100%', background: state.autoTapEnabled ? '#3C4F35' : '#3A2C1D', border: `1px solid ${state.autoTapEnabled ? '#6B8A5E' : '#5A4630'}`, borderRadius: 8, padding: '9px 0', color: state.autoTapEnabled ? '#D7E5CE' : '#E0A93E', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+      }, state.autoTapEnabled ? '✓ Auto-Tap is ON' : 'Turn on Auto-Tap')
+    ),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      PRESTIGE_TREE.map(tier => h(PrestigeTierBlock, { key: tier.tier, tier: tier, state: state, onBuy: onBuy, icons: icons }))
+    )
+  );
+}
+
+function AchievementsView(props) {
+  const { state, icons, onStartBrewOff, onCancelBrewOff } = props;
+  const now = Date.now();
+
+  return h('div', { style: { padding: '4px 16px 0' } },
+    h('div', { style: { margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px' } },
+      h('div', { style: { fontSize: 12, color: '#C9B8E8', fontWeight: 600 } }, '🏆 Trophy Case'),
+      h('div', { style: { fontSize: 10.5, color: '#8A7CA0', marginTop: 3 } }, 'Challenge each Brew Off boss once you hit their prestige level. Earn their cash target within 60 seconds to win the trophy — permanently.')
+    ),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+      BREW_OFF_BOSSES.map(boss => h(BossCard, {
+        key: boss.id, boss: boss, state: state, now: now, icons: icons,
+        onStart: onStartBrewOff, onCancel: onCancelBrewOff,
+      }))
+    )
+  );
+}
+
+function BossCard(props) {
+  const { boss, state, now, icons, onStart, onCancel } = props;
+  const won = !!state.trophies[boss.id];
+  const unlocked = state.prestige >= boss.minLevel;
+  const active = state.brewOff && state.brewOff.bossId === boss.id;
+  const otherActive = state.brewOff && state.brewOff.bossId !== boss.id;
+
+  if (!unlocked) {
+    return h('div', { style: { background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' } },
+      h('span', { style: { fontSize: 18 } }, icons.lock),
+      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `Reach prestige generation ${boss.minLevel + 1} to challenge ${boss.name}`)
+    );
+  }
+
+  const earned = active ? Math.max(0, state.totalEarned - state.brewOff.startEarned) : 0;
+  const pct = active ? Math.min(100, (earned / boss.target) * 100) : 0;
+  const secondsLeft = active ? Math.max(0, Math.ceil((state.brewOff.endsAt - now) / 1000)) : 0;
+
+  return h('div', { style: { background: won ? 'linear-gradient(135deg, #3A2E1A, #2A2233)' : '#2C2116', border: `1px solid ${won ? '#D4AF2C' : '#3A2C1D'}`, borderRadius: 10, padding: 12 } },
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+      h('div', { style: { fontSize: 26, flexShrink: 0 } }, boss.icon),
+      h('div', { style: { flex: 1, minWidth: 0 } },
+        h('div', { style: { fontSize: 13.5, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, boss.name),
+        h('div', { style: { fontSize: 10.5, color: won ? '#F0D98C' : '#8A7860', marginTop: 1 } }, won ? `✓ ${boss.trophy} won` : `${boss.trophy} · earn ${fmtMoney(boss.target)} in 60s`)
       )
     ),
-    tierUnlocked && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
-      tier.nodes.map(node => {
-        const rank = rankOf(state, node.id);
-        const maxed = rank >= NODE_MAX_RANK;
-        const cost = maxed ? null : nodeCostAt(node, rank);
-        const bev = BEVERAGES.find(b => b.id === node.beverageId);
-        const desc = node.type === 'rate'
-          ? `+${Math.round(RATE_EFFECT_PER_RANK * 100)}% ${bev.name} rate / rank`
-          : `-${Math.round(COST_EFFECT_PER_RANK * 100)}% ${bev.name} costs / rank`;
-        return h('div', { key: node.id, style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#2A2233', borderRadius: 7, padding: '7px 9px' } },
-          h('div', { style: { minWidth: 0 } },
-            h('div', { style: { fontSize: 11.5, fontWeight: 600, color: '#E5D9FF' } }, node.name, ' ', h('span', { style: { color: '#8A7CA0', fontWeight: 400 } }, `Lv.${rank}/${NODE_MAX_RANK}`)),
-            h('div', { style: { fontSize: 10, color: '#8A7CA0', fontFamily: 'JetBrains Mono, monospace' } }, desc)
-          ),
-          h('button', {
-            className: 'btn', disabled: maxed || state.prestigePoints < cost,
-            onClick: () => onBuy(node.id),
-            style: { flexShrink: 0, background: maxed ? 'none' : '#4A3D6B', border: `1px solid ${maxed ? '#3D3350' : '#6B5A9C'}`, borderRadius: 6, padding: '6px 10px', color: maxed ? '#8A7CA0' : '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: maxed ? 'default' : 'pointer' },
-          }, maxed ? 'Maxed' : `${cost} pt${cost === 1 ? '' : 's'}`)
-        );
-      })
+    active && h('div', { style: { marginTop: 10 } },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#C9BBA3', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' } },
+        h('span', null, `${fmtMoney(earned)} / ${fmtMoney(boss.target)}`),
+        h('span', null, `${secondsLeft}s left`)
+      ),
+      h('div', { style: { height: 8, borderRadius: 4, background: '#1B140D', overflow: 'hidden' } },
+        h('div', { style: { height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #E0A93E, #D4AF2C)', transition: 'width 0.2s linear' } })
+      ),
+      h('button', { className: 'btn', onClick: onCancel, style: { marginTop: 8, width: '100%', background: 'none', border: '1px solid #4A3826', borderRadius: 7, padding: '6px 0', color: '#8A7860', fontSize: 11, cursor: 'pointer' } }, 'Give up')
+    ),
+    !active && !won && h('button', {
+      className: 'btn', disabled: otherActive, onClick: () => onStart(boss.id),
+      style: { marginTop: 10, width: '100%', background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 7, padding: '8px 0', color: otherActive ? '#5A4A38' : '#E0A93E', fontSize: 12, fontWeight: 600, cursor: otherActive ? 'default' : 'pointer' },
+    }, otherActive ? 'Finish your current Brew Off first' : `Challenge ${boss.name}`)
+  );
+}
+
+function StoreView(props) {
+  const { state, icons, onBuy, onEquip } = props;
+  const groups = [
+    { type: 'background', label: 'Bar backgrounds', note: 'Cosmetic — changes the backdrop everywhere.' },
+    { type: 'iconPack', label: 'Icon packs', note: 'Cosmetic — reskins the ledger and action icons.' },
+    { type: 'categoryBoost', label: 'Equipment', note: 'Permanent, one-time. Boosts one beverage category — low-end and high-end gear both stack.' },
+    { type: 'boost', label: 'Boosts', note: 'Permanent, one-time. Never lost, even on prestige.' },
+  ];
+
+  return h('div', { style: { padding: '4px 16px 0' } },
+    h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px' } },
+      h('div', { style: { fontSize: 12, color: '#C9B8E8', fontWeight: 600 } }, `${icons.prestige} ${state.prestigePoints} prestige points to spend`),
+    ),
+    groups.map(group => {
+      const items = STORE_ITEMS.filter(i => i.type === group.type);
+      return h('div', { key: group.type, style: { marginBottom: 22 } },
+        h(SectionLabel, { text: group.label }),
+        h('div', { style: { fontSize: 11, color: '#8A7860', marginTop: -4, marginBottom: 10 } }, group.note),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          items.map(item => h(StoreItemCard, { key: item.id, item: item, state: state, onBuy: onBuy, onEquip: onEquip }))
+        )
+      );
+    })
+  );
+}
+
+function StoreItemCard(props) {
+  const { item, state, onBuy, onEquip } = props;
+  const owned = isItemOwned(state, item.id);
+  const equipped = (item.type === 'background' && state.store.background === item.id) ||
+                    (item.type === 'iconPack' && state.store.iconPack === item.id);
+  const affordable = state.prestigePoints >= item.cost;
+
+  const preview = item.type === 'background'
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 } })
+    : item.type === 'iconPack'
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, ICON_PACKS[item.id].cash)
+    : item.type === 'categoryBoost'
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: `${CATEGORY_STYLES[item.category].accent}33`, border: `1px solid ${CATEGORY_STYLES[item.category].accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, '🔧')
+    : h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, '⭐');
+
+  return h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, background: '#2C2116', border: `1px solid ${equipped ? '#E0A93E' : '#3A2C1D'}`, borderRadius: 10, padding: 10 } },
+    preview,
+    h('div', { style: { flex: 1, minWidth: 0 } },
+      h('div', { style: { fontSize: 13, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, item.name),
+      h('div', { style: { fontSize: 10.5, color: '#8A7860', marginTop: 1 } }, item.desc)
+    ),
+    equipped
+      ? h('div', { style: { flexShrink: 0, fontSize: 10.5, color: '#E0A93E', fontWeight: 700, padding: '6px 10px' } }, 'Equipped')
+      : owned
+      ? ((item.type === 'boost' || item.type === 'categoryBoost')
+          ? h('div', { style: { flexShrink: 0, fontSize: 10.5, color: '#9CC28A', fontWeight: 700, padding: '6px 10px' } }, 'Owned ✓')
+          : h('button', { className: 'btn', onClick: () => onEquip(item.id), style: { flexShrink: 0, background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 6, padding: '6px 10px', color: '#E0A93E', fontSize: 11, fontWeight: 600, cursor: 'pointer' } }, 'Equip'))
+      : h('button', {
+          className: 'btn', disabled: !affordable, onClick: () => onBuy(item.id),
+          style: { flexShrink: 0, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 6, padding: '6px 10px', color: '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: affordable ? 'pointer' : 'not-allowed' },
+        }, `${item.cost} pt${item.cost === 1 ? '' : 's'}`)
+  );
+}
+
+
+function TutorialOverlay(props) {
+  const { step, onNext, onBack, onClose } = props;
+  const total = TUTORIAL_STEPS.length;
+  const isLast = step === total - 1;
+  const current = TUTORIAL_STEPS[step];
+
+  return h('div', {
+    style: { position: 'fixed', inset: 0, background: 'rgba(15, 10, 6, 0.72)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
+    onClick: onClose,
+  },
+    h('div', {
+      onClick: (e) => e.stopPropagation(),
+      style: { width: '100%', maxWidth: 480, background: '#2C2116', border: '1px solid #4A3826', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: '20px 20px 24px', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)' },
+    },
+      h('div', { style: { display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 16 } },
+        TUTORIAL_STEPS.map((_, i) => h('div', { key: i, style: { width: i === step ? 16 : 6, height: 6, borderRadius: 3, background: i === step ? '#E0A93E' : '#4A3826', transition: 'width 0.2s ease' } }))
+      ),
+      h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 700, color: '#E0A93E', marginBottom: 8 } }, current.title),
+      h('div', { style: { fontSize: 13.5, color: '#C9BBA3', lineHeight: 1.6, marginBottom: 20 } }, current.body),
+      h('div', { style: { display: 'flex', gap: 8 } },
+        step > 0 && h('button', { onClick: onBack, style: { flex: 1, background: 'none', border: '1px solid #4A3826', borderRadius: 8, padding: '10px 0', color: '#8A7860', fontSize: 13, fontWeight: 600, cursor: 'pointer' } }, 'Back'),
+        h('button', {
+          onClick: isLast ? onClose : onNext,
+          style: { flex: 2, background: '#E0A93E', border: 'none', borderRadius: 8, padding: '10px 0', color: '#241A12', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+        }, isLast ? "Let's brew!" : 'Next')
+      ),
+      !isLast && h('button', { onClick: onClose, style: { display: 'block', margin: '12px auto 0', background: 'none', border: 'none', color: '#6B5D48', fontSize: 11.5, cursor: 'pointer' } }, 'Skip tutorial')
     )
   );
 }
