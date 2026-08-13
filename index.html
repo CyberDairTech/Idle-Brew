@@ -189,34 +189,59 @@ const WINE_NODE_INDICES = {
 
 const TUTORIAL_STEPS = [
   {
+    targetId: 'app-title',
     title: 'Welcome to Idle Brew',
-    body: "You've taken over a struggling brewery — deep in debt, but with a plan. This quick walkthrough covers the basics, then you're on your own.",
+    body: "You've taken over a struggling brewery — deep in debt, but with a plan. This quick walkthrough will point at the real controls as we go.",
   },
   {
+    targetId: 'ledger-income',
     title: 'Your drinks earn on their own',
-    body: 'Every beverage you unlock earns cash every second, whether you\'re watching or not. House Brew is already working for you, right now, for free.',
+    body: 'Every beverage you unlock earns cash every second, whether you\'re watching or not. This is your total income — House Brew is already working for you, right now, for free.',
   },
   {
+    targetId: 'ledger-debt',
     title: 'Debt never sleeps',
-    body: "Your loan grows interest every second too. Use the Pay $50 and Pay all cash buttons up top to keep it in check before it outpaces you.",
+    body: 'Your loan grows a little every second too. Use the Pay $50 and Pay all cash buttons just below this card to keep it in check before it outpaces you.',
   },
   {
+    targetId: 'beverages-section',
     title: 'Unlock, then improve',
-    body: 'Spend cash to unlock new beverages. Once owned, spend more to improve their proficiency — that permanently raises how much they earn per second.',
+    body: 'Spend cash to unlock new beverages here. Once owned, spend more to improve their proficiency — that permanently raises how much they earn per second.',
   },
   {
+    targetId: 'beverage-house',
     title: 'Tap for a boost',
-    body: "Tap any beverage you've unlocked for an instant cash bonus. Idling earns steadily, but checking in and tapping around always earns more.",
+    body: "Tap any beverage you own for an instant cash bonus, like this one. Idling earns steadily, but checking in and tapping around always earns more.",
   },
   {
+    targetId: 'nav-tree',
     title: 'Prestige for good',
-    body: "Once your debt hits zero, you can prestige: reset the run, take on a bigger loan next time, and spend permanent points in the Prestige Tree below. Ready to brew?",
+    body: "Once your debt hits zero, you can prestige from the Brewery screen: reset the run, take on a bigger loan next time, and spend permanent points here in the Prestige Tree.",
+  },
+  {
+    targetId: 'nav-buttons',
+    title: 'More to discover',
+    body: 'The Store sells cosmetics and permanent equipment upgrades. Trophies tracks Brew Off boss battles. Settings has the change log and a reset button if you ever want a clean slate.',
+  },
+  {
+    targetId: null,
+    title: 'Ready to brew!',
+    body: "That's everything to get started. The rest is yours to explore.",
   },
 ];
 
 const TAP_SECONDS_WORTH = 8;
 const TAP_COOLDOWN = 1800;
-const INTEREST_RATE_PER_SEC = 0.00028;
+// Debt now grows by a FLAT dollar amount per second, not a compounding
+// percentage. Compounding meant any long stretch offline (hours, let alone
+// days) multiplied the balance exponentially against elapsed time, which
+// could produce genuinely unreadable numbers. A flat rate grows linearly
+// instead — bounded, predictable, and the same whether you check back in
+// an hour or a week. The rate itself still scales with prestige level (a
+// generation-100 loan should sting more than a generation-1 one), it's
+// just computed once from that run's starting debt instead of compounding
+// on the current balance.
+const DEBT_FLAT_INTEREST_RATIO = 0.00028;
 const INVEST_RATE_PER_SEC = 0.00028; // same rate, now working for you instead of against you
 const STARTING_DEBT = 350;
 const STARTING_CASH = 60;
@@ -591,6 +616,9 @@ function pointsForPrestige(currentLevel) {
 function debtForRun(newLevel) {
   return Math.round(STARTING_DEBT * Math.pow(DEBT_GROWTH_PER_PRESTIGE, newLevel));
 }
+function flatInterestPerSec(state) {
+  return debtForRun(state.prestige) * DEBT_FLAT_INTEREST_RATIO;
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -615,6 +643,7 @@ function Fermentary() {
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [view, setView] = useState('game');
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const toastTimer = useRef(null);
   const stateRef = useRef(null);
   stateRef.current = state;
@@ -653,7 +682,7 @@ function Fermentary() {
       const rate = totalRateOf(base);
       const earned = rate * elapsedSec;
       const startingDebt = settleDebt(base.debt);
-      const debt = startingDebt > 0 ? settleDebt(startingDebt * Math.pow(1 + INTEREST_RATE_PER_SEC, elapsedSec)) : 0;
+      const debt = startingDebt > 0 ? settleDebt(startingDebt + flatInterestPerSec(base) * elapsedSec) : 0;
 
       const next = Object.assign({}, base, { cash: base.cash + earned, totalEarned: (base.totalEarned || 0) + earned, debt, lastSeen: nowTs });
       if (!cancelled) {
@@ -701,7 +730,7 @@ function Fermentary() {
 
         const rate = totalRateOf(prev);
         const income = rate * dt;
-        const debt = isDebtCleared(prev.debt) ? 0 : settleDebt(prev.debt * Math.pow(1 + INTEREST_RATE_PER_SEC, dt));
+        const debt = isDebtCleared(prev.debt) ? 0 : settleDebt(prev.debt + flatInterestPerSec(prev) * dt);
         return Object.assign({}, prev, { cash: cash + income, totalEarned: totalEarned + income, debt, tapCount, beverages });
       });
     }, TICK_MS);
@@ -926,6 +955,15 @@ function Fermentary() {
     setState(prev => prev && Object.assign({}, prev, { brewOff: null }));
   }
 
+  function resetProgress() {
+    const fresh = defaultState();
+    setState(fresh);
+    storage.set(SAVE_KEY, JSON.stringify(fresh)).catch(() => {});
+    setConfirmingReset(false);
+    setView('game');
+    showToast('Progress reset — starting fresh.', 'neutral');
+  }
+
   const payBtnStyle = { flex: 1, background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer' };
 
   const icons = ICON_PACKS[state.store.iconPack] || ICON_PACKS.icons_classic;
@@ -957,8 +995,9 @@ function Fermentary() {
     tutorialOpen && h(TutorialOverlay, { step: tutorialStep, onNext: () => setTutorialStep(s => Math.min(TUTORIAL_STEPS.length - 1, s + 1)), onBack: () => setTutorialStep(s => Math.max(0, s - 1)), onClose: closeTutorial }),
 
     h('div', { style: { padding: '14px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
-      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 } },
+      h('div', { id: 'nav-buttons', style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 } },
         h('button', {
+          id: 'nav-tree',
           onClick: () => setView(v => v === 'tree' ? 'game' : 'tree'), 'aria-label': 'Prestige tree',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'tree' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'tree' ? '#6B5A9C' : '#5A4630'}`, color: view === 'tree' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
         }, view === 'tree' ? '← Brewery' : '🌳 Tree'),
@@ -973,9 +1012,13 @@ function Fermentary() {
         h('button', {
           onClick: openTutorial, 'aria-label': 'Show tutorial',
           style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-        }, '?')
+        }, '?'),
+        h('button', {
+          onClick: () => setView(v => v === 'settings' ? 'game' : 'settings'), 'aria-label': 'Settings',
+          style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: view === 'settings' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'settings' ? '#6B5A9C' : '#5A4630'}`, color: view === 'settings' ? '#E5D9FF' : '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        }, '⚙️')
       ),
-      h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
+      h('div', { id: 'app-title', style: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' } },
         h('h1', { style: { fontFamily: 'Fraunces, serif', fontWeight: 700, fontSize: 26, margin: 0, color: '#E0A93E', letterSpacing: 0.3 } }, 'Idle Brew'),
         h('span', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace' } }, `gen. ${state.prestige + 1}`)
       ),
@@ -989,14 +1032,16 @@ function Fermentary() {
       ? h(PrestigeTreeView, { state: state, icons: icons, onBuy: buyPrestigeNode, onToggleAutoTap: toggleAutoTap })
       : view === 'achievements'
       ? h(AchievementsView, { state: state, icons: icons, onStartBrewOff: startBrewOff, onCancelBrewOff: cancelBrewOff })
+      : view === 'settings'
+      ? h(SettingsView, { confirmingReset: confirmingReset, onConfirmReset: () => setConfirmingReset(true), onCancelReset: () => setConfirmingReset(false), onReset: resetProgress })
       : h(React.Fragment, null,
 
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' } },
       h(LedgerCard, { icon: icons.cash, label: 'Cash', value: fmtMoney(state.cash), color: '#E0A93E' }),
       debtCleared
-        ? h(LedgerCard, { icon: '📥', label: 'Invested', value: fmtMoney(state.invested || 0), color: '#9CC28A' })
-        : h(LedgerCard, { icon: icons.debt, label: 'Debt', value: fmtMoney(state.debt), color: '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
-      h(LedgerCard, { icon: icons.income, label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
+        ? h(LedgerCard, { id: 'ledger-debt', icon: '📥', label: 'Invested', value: fmtMoney(state.invested || 0), color: '#9CC28A' })
+        : h(LedgerCard, { id: 'ledger-debt', icon: icons.debt, label: 'Debt', value: fmtMoney(state.debt), color: '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
+      h(LedgerCard, { id: 'ledger-income', icon: icons.income, label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
       h(LedgerCard, { icon: icons.lifetime, label: 'Lifetime earned', value: fmtMoney(state.totalEarned), color: '#B49BD1' })
     ),
 
@@ -1042,7 +1087,7 @@ function Fermentary() {
     ),
 
     h('div', { style: { padding: '0 16px' } },
-      h(SectionLabel, { text: 'Beverages' }),
+      h(SectionLabel, { id: 'beverages-section', text: 'Beverages' }),
       h('div', { style: { display: 'flex', flexDirection: 'column', gap: 18 } },
         Object.keys(CATEGORY_LABELS).map(cat => {
           const items = BEVERAGES.filter(b => b.category === cat);
@@ -1055,6 +1100,7 @@ function Fermentary() {
                 const cur = state.beverages[b.id];
                 return h(BeverageCard, {
                   key: b.id, bev: b, bevState: cur, debtUnlocked: unlockedTank, cash: state.cash, icons: icons, tapCooldown: effectiveTapCooldown(state),
+                  domId: b.id === 'house' ? 'beverage-house' : undefined,
                   rate: rateOf(b, cur.level, state),
                   nextRate: rateOf(b, cur.level + 1, state),
                   nextCost: cur.level > 0 ? upgradeCostOf(b, cur.level, state) : effectiveUnlockCost(b, state),
@@ -1075,7 +1121,7 @@ function Fermentary() {
 }
 
 function SectionLabel(props) {
-  return h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
+  return h('div', { id: props.id, style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
 }
 
 function TasksCard(props) {
@@ -1102,8 +1148,8 @@ function TasksCard(props) {
 }
 
 function LedgerCard(props) {
-  const { icon, label, value, color, bleed } = props;
-  return h('div', { style: { position: 'relative', background: '#EDE3D0', borderRadius: 8, padding: '10px 12px', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' } },
+  const { id, icon, label, value, color, bleed } = props;
+  return h('div', { id: id, style: { position: 'relative', background: '#EDE3D0', borderRadius: 8, padding: '10px 12px', overflow: 'hidden', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' } },
     bleed !== undefined && h('div', { style: { position: 'absolute', left: 0, bottom: 0, width: '100%', height: `${bleed * 100}%`, background: 'linear-gradient(180deg, rgba(161,61,61,0.05), rgba(161,61,61,0.22))', pointerEvents: 'none' } }),
     h('div', { style: { position: 'relative', display: 'flex', alignItems: 'center', gap: 6, color: '#7A6A4E', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 } },
       h('span', { style: { fontSize: 13 } }, icon), ' ', label
@@ -1141,6 +1187,7 @@ function BeverageCard(props) {
   const style = CATEGORY_STYLES[bev.category] || CATEGORY_STYLES.beer;
 
   return h('div', {
+    id: props.domId,
     className: owned ? 'tap-card' : '',
     onClick: owned ? handleTap : undefined,
     style: { position: 'relative', background: style.bg, border: `1px solid ${style.border}`, borderRadius: 10, padding: 12, overflow: 'hidden' },
@@ -1290,6 +1337,75 @@ function PrestigeTreeView(props) {
   );
 }
 
+// Changelog reflects the actual build history of this game, oldest first
+// when read bottom-to-top like a real release log (newest shown first).
+const CHANGELOG = [
+  { version: '1.9', title: 'Settings', notes: 'Added this page — change log, roadmap, and a proper in-app reset that doesn\u2019t require clearing your browser cache.' },
+  { version: '1.8', title: 'Flat Interest', notes: 'Replaced compounding debt interest with a flat per-second rate, so leaving the game running no longer produces an unreadable debt number.' },
+  { version: '1.7', title: 'Brew Off', notes: 'Added boss battles — challenge Big Sal, Coldbrew Katrina, The Vintner Baron, and The Whiskey Wraith for permanent trophies, plus a Trophy Case to track them.' },
+  { version: '1.6', title: 'Auto-Tap & Equipment', notes: 'Beverages fully mastered in the Prestige Tree now tap themselves. Added category-specific Equipment upgrades to the Store, modeled on real brewing and distilling gear.' },
+  { version: '1.5', title: 'Tasks & Investing', notes: 'Added the Tasks system (3 goals per run, difficulty scaling with prestige level) and the post-debt Investing mechanic.' },
+  { version: '1.4', title: 'Whiskey & a Harder Climb', notes: 'Added the Whiskey category, Corn Whiskey through Master\u2019s Legacy Cask, and rebalanced the economy so the back half of the game is a real climb.' },
+  { version: '1.3', title: 'Prestige Tree Expansion', notes: 'Extended the Prestige Tree to cover every beverage category and redesigned it as connect-the-dots glassware — pint glass, goblet, mug, tumbler.' },
+  { version: '1.2', title: 'The Store', notes: 'Opened the Store — bar backgrounds, icon packs, and permanent one-time boosts.' },
+  { version: '1.1', title: 'Ciders & Wines', notes: 'Added 5 cider and 5 wine tiers, a new-player tutorial, and color-coded beverage categories.' },
+  { version: '1.0', title: 'First Brew', notes: 'Launched with House Brew through Founder\u2019s Reserve, debt payoff, and your first taste of prestige.' },
+];
+
+// Aspirational, not a promise — there's no live backend pushing these, so
+// this list is really just notes-to-self about what could come next.
+// Whoever's holding this file should feel free to edit it directly.
+const UPCOMING = [
+  'More Brew Off bosses, and a way to replay ones you\u2019ve already beaten',
+  'Leaderboards or a shareable results card',
+  'A few more cosmetic themes and icon packs',
+  'Export / import a save code to move progress between devices',
+  'Prestige Tree nodes for the new Equipment boosts',
+];
+
+function SettingsView(props) {
+  const { confirmingReset, onConfirmReset, onCancelReset, onReset } = props;
+  return h('div', { style: { padding: '4px 16px 0' } },
+
+    h('div', { style: { margin: '10px 0 18px', background: '#3A1F1F', border: '1px solid #6B3A3A', borderRadius: 10, padding: '12px 14px' } },
+      h('div', { style: { fontSize: 12.5, color: '#E8B4B4', fontWeight: 700, marginBottom: 4 } }, '⚠️ Reset progress'),
+      h('div', { style: { fontSize: 10.5, color: '#C9A0A0', marginBottom: 10, lineHeight: 1.5 } }, 'Wipes cash, debt, every beverage, the Prestige Tree, Store purchases, and trophies — permanently. This cannot be undone.'),
+      !confirmingReset && h('button', { className: 'btn', onClick: onConfirmReset, style: { width: '100%', background: '#5C2B2B', border: '1px solid #A13D3D', borderRadius: 8, padding: '9px 0', color: '#F0D0D0', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' } }, 'Reset all progress'),
+      confirmingReset && h('div', null,
+        h('div', { style: { fontSize: 11, color: '#F0D0D0', marginBottom: 8, fontWeight: 600 } }, 'Are you sure? There is no undo.'),
+        h('div', { style: { display: 'flex', gap: 8 } },
+          h('button', { className: 'btn', onClick: onReset, style: { flex: 1, background: '#5C2B2B', border: '1px solid #A13D3D', borderRadius: 8, padding: '8px 0', color: '#F0D0D0', fontSize: 12, fontWeight: 700, cursor: 'pointer' } }, 'Yes, reset everything'),
+          h('button', { className: 'btn', onClick: onCancelReset, style: { flex: 1, background: 'none', border: '1px solid #6B3A3A', borderRadius: 8, padding: '8px 0', color: '#C9A0A0', fontSize: 12, cursor: 'pointer' } }, 'Cancel')
+        )
+      )
+    ),
+
+    h('div', { style: { marginBottom: 24 } },
+      h(SectionLabel, { text: 'Upcoming' }),
+      h('div', { style: { fontSize: 10.5, color: '#8A7860', marginTop: -4, marginBottom: 10 } }, 'Ideas being considered — not promises, just what\u2019s on the list.'),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+        UPCOMING.map((item, i) => h('div', { key: i, style: { display: 'flex', gap: 8, fontSize: 12, color: '#C9BBA3', background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 8, padding: '8px 10px' } },
+          h('span', { style: { color: '#8A7860', flexShrink: 0 } }, '•'),
+          h('span', null, item)
+        ))
+      )
+    ),
+
+    h('div', { style: { marginBottom: 8 } },
+      h(SectionLabel, { text: 'Change log' }),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        CHANGELOG.map(entry => h('div', { key: entry.version, style: { background: '#2C2116', border: '1px solid #3A2C1D', borderRadius: 8, padding: '9px 12px' } },
+          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 } },
+            h('span', { style: { fontSize: 11, color: '#8A7860', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 } }, `v${entry.version}`),
+            h('span', { style: { fontSize: 12.5, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, entry.title)
+          ),
+          h('div', { style: { fontSize: 11, color: '#8A7860', lineHeight: 1.5 } }, entry.notes)
+        ))
+      )
+    )
+  );
+}
+
 function AchievementsView(props) {
   const { state, icons, onStartBrewOff, onCancelBrewOff } = props;
   const now = Date.now();
@@ -1417,16 +1533,85 @@ function TutorialOverlay(props) {
   const total = TUTORIAL_STEPS.length;
   const isLast = step === total - 1;
   const current = TUTORIAL_STEPS[step];
+  const [rect, setRect] = useState(null);
 
-  return h('div', {
-    style: { position: 'fixed', inset: 0, background: 'rgba(15, 10, 6, 0.72)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' },
-    onClick: onClose,
-  },
+  useEffect(() => {
+    let cancelled = false;
+    let rafId = null;
+    setRect(null);
+
+    function measureNow() {
+      if (cancelled || !current.targetId) return;
+      const el = document.getElementById(current.targetId);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect(prev => {
+        const next = { top: r.top, left: r.left, width: r.width, height: r.height };
+        if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width && prev.height === next.height) return prev;
+        return next;
+      });
+    }
+    function scheduleMeasure() {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => { rafId = null; measureNow(); });
+    }
+
+    let scrollTimer = null;
+    if (current.targetId) {
+      const el = document.getElementById(current.targetId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scrollTimer = setTimeout(measureNow, 380);
+    }
+
+    window.addEventListener('scroll', scheduleMeasure, true);
+    window.addEventListener('resize', scheduleMeasure);
+    const keepInSync = setInterval(measureNow, 500);
+
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (scrollTimer) clearTimeout(scrollTimer);
+      window.removeEventListener('scroll', scheduleMeasure, true);
+      window.removeEventListener('resize', scheduleMeasure);
+      clearInterval(keepInSync);
+    };
+  }, [step, current.targetId]);
+
+  const pad = 8;
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  let calloutStyle = { position: 'fixed', left: 16, right: 16, maxWidth: 460, margin: '0 auto', zIndex: 103 };
+  if (rect) {
+    const spaceBelow = viewportH - (rect.top + rect.height);
+    const spaceAbove = rect.top;
+    if (spaceBelow >= 190 || spaceBelow >= spaceAbove) {
+      calloutStyle.top = Math.min(viewportH - 20, rect.top + rect.height + pad + 14);
+    } else {
+      calloutStyle.bottom = Math.max(16, viewportH - rect.top + pad + 14);
+    }
+  } else {
+    calloutStyle.top = '50%';
+    calloutStyle.transform = 'translateY(-50%)';
+  }
+
+  return h('div', { style: { position: 'fixed', inset: 0, zIndex: 100 }, onClick: onClose },
+    // Dimmed backdrop everywhere, with a cutout around the target via a huge box-shadow.
+    rect
+      ? h('div', {
+          style: {
+            position: 'fixed', top: rect.top - pad, left: rect.left - pad,
+            width: rect.width + pad * 2, height: rect.height + pad * 2,
+            borderRadius: 12, border: '2px solid #E0A93E',
+            boxShadow: '0 0 0 9999px rgba(10,7,4,0.8)',
+            zIndex: 101,
+          },
+        })
+      : h('div', { style: { position: 'fixed', inset: 0, background: 'rgba(10,7,4,0.8)', zIndex: 101 } }),
+
     h('div', {
       onClick: (e) => e.stopPropagation(),
-      style: { width: '100%', maxWidth: 480, background: '#2C2116', border: '1px solid #4A3826', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: '20px 20px 24px', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)' },
+      style: Object.assign({ background: '#2C2116', border: '1px solid #4A3826', borderRadius: 14, padding: '18px 18px 20px', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }, calloutStyle),
     },
-      h('div', { style: { display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 16 } },
+      h('div', { style: { display: 'flex', justifyContent: 'center', gap: 5, marginBottom: 14 } },
         TUTORIAL_STEPS.map((_, i) => h('div', { key: i, style: { width: i === step ? 16 : 6, height: 6, borderRadius: 3, background: i === step ? '#E0A93E' : '#4A3826', transition: 'width 0.2s ease' } }))
       ),
       h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 700, color: '#E0A93E', marginBottom: 8 } }, current.title),
