@@ -1403,18 +1403,30 @@ function IdleBrew() {
 
 function HoldableButton(props) {
   const { onAction, disabled, children, style, className } = props;
-  const timerRef = useRef(null);
-  const stop = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
-  const start = () => {
-    if (disabled || timerRef.current) return;
-    onAction();
-    timerRef.current = setInterval(onAction, 130);
+  const holdDelayRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const stopAll = () => {
+    if (holdDelayRef.current) { clearTimeout(holdDelayRef.current); holdDelayRef.current = null; }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
   };
-  useEffect(() => stop, []);
+
+  const start = () => {
+    if (disabled || holdDelayRef.current || intervalRef.current) return;
+    onAction(); // fires once immediately, so a quick tap still feels instant
+    // Only start rapid-fire if still held after this — a normal tap
+    // releases well before the threshold, so it never repeats.
+    holdDelayRef.current = setTimeout(() => {
+      holdDelayRef.current = null;
+      intervalRef.current = setInterval(onAction, 130);
+    }, 350);
+  };
+
+  useEffect(() => stopAll, []);
   return h('button', {
     className, disabled,
-    onMouseDown: start, onMouseUp: stop, onMouseLeave: stop,
-    onTouchStart: (e) => { e.preventDefault(); start(); }, onTouchEnd: stop, onTouchCancel: stop,
+    onMouseDown: start, onMouseUp: stopAll, onMouseLeave: stopAll,
+    onTouchStart: (e) => { e.preventDefault(); start(); }, onTouchEnd: stopAll, onTouchCancel: stopAll,
     style: Object.assign({}, style, { WebkitUserSelect: 'none', WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation' }),
   }, children);
 }
