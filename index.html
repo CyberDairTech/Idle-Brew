@@ -9,6 +9,7 @@
   html, body { margin: 0; padding: 0; background: #1B140D; }
   * { box-sizing: border-box; }
   #root { min-height: 100vh; }
+  button { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   .fermentary-msg { padding: 40px 20px; text-align: center; color: #E8DCC4; font-family: -apple-system, Inter, sans-serif; max-width: 420px; margin: 40px auto; }
   .fermentary-msg h2 { margin-bottom: 8px; }
   .fermentary-msg p { color: #A6957A; font-size: 13px; line-height: 1.6; }
@@ -1215,7 +1216,7 @@ function HoldableButton(props) {
     className, disabled,
     onMouseDown: start, onMouseUp: stop, onMouseLeave: stop,
     onTouchStart: (e) => { e.preventDefault(); start(); }, onTouchEnd: stop, onTouchCancel: stop,
-    style,
+    style: Object.assign({}, style, { WebkitUserSelect: 'none', WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation' }),
   }, children);
 }
 
