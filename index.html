@@ -1220,8 +1220,14 @@ function IdleBrew() {
 
   const icons = ICON_PACKS[state.store.iconPack] || ICON_PACKS.icons_classic;
   const bgGradient = BACKGROUND_THEMES[state.store.background] || BACKGROUND_THEMES.bg_classic;
+  const equippedBgItem = STORE_ITEM_BY_ID[state.store.background];
+  const activeThemeForBg = equippedBgItem && equippedBgItem.type === 'theme' ? equippedBgItem : null;
 
-  return h('div', { style: { minHeight: '100vh', background: bgGradient, fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40 } },
+  return h('div', { style: { minHeight: '100vh', background: bgGradient, fontFamily: 'Inter, sans-serif', color: '#E8DCC4', paddingBottom: 40, position: 'relative' } },
+    activeThemeForBg && h('div', { style: { position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' } },
+      h(CategoryIcon, { category: activeThemeForBg.category, size: 340, color: CATEGORY_STYLES[activeThemeForBg.category].accent, opacity: 0.055 })
+    ),
+    h('div', { style: { position: 'relative', zIndex: 1 } },
     h('style', null, `
       @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
@@ -1391,6 +1397,7 @@ function IdleBrew() {
       "Progress saves automatically in this browser. Tap a brewing beverage for a quick bonus — it's worth more than just letting it run."
     )
       )
+    )
   );
 }
 
@@ -1476,6 +1483,47 @@ const LABEL_COLORS = ['#F0E4C4', '#EDE3D0', '#F5D98C', '#E3D4A8'];
 
 // Bottle: neck + body tinted by category, plus a small paper-label band so
 // each one reads as its own bottle rather than a category-colored clone.
+// Simple hand-drawn ingredient icons per category — a hop cone for beer,
+// an apple for cider, a grape cluster for wine, and a grain stalk for
+// whiskey (whiskey is distilled from a fermented grain mash — corn, rye,
+// wheat, or malted barley — so a generic stalk covers all of them).
+function CategoryIcon(props) {
+  const { category, size, color, opacity } = props;
+  const c = color || '#E0A93E';
+  const o = opacity === undefined ? 1 : opacity;
+  const wrap = (children) => h('svg', { width: size, height: size, viewBox: '0 0 100 100', style: { opacity: o, display: 'block' } }, children);
+
+  if (category === 'beer') {
+    return wrap([
+      h('path', { key: 'a', d: 'M50 8 C30 8 18 28 18 48 C18 68 32 88 50 96 C68 88 82 68 82 48 C82 28 70 8 50 8 Z', fill: c }),
+      h('path', { key: 'b', d: 'M50 20 C38 20 30 34 30 48 C30 62 40 78 50 84 C60 78 70 62 70 48 C70 34 62 20 50 20 Z', fill: 'none', stroke: 'rgba(0,0,0,0.22)', strokeWidth: 2 }),
+      h('line', { key: 'c', x1: 50, y1: 8, x2: 50, y2: 96, stroke: 'rgba(0,0,0,0.18)', strokeWidth: 1.5 }),
+    ]);
+  }
+  if (category === 'cider') {
+    return wrap([
+      h('path', { key: 'a', d: 'M50 30 C30 22 12 38 12 60 C12 80 30 92 48 92 C49 92 50 90 50 88 C50 90 51 92 52 92 C70 92 88 80 88 60 C88 38 70 22 50 30 Z', fill: c }),
+      h('rect', { key: 'b', x: 47, y: 10, width: 5, height: 16, rx: 2, fill: '#6B5636' }),
+      h('ellipse', { key: 'c', cx: 62, cy: 16, rx: 12, ry: 7, fill: '#6B8A5E', transform: 'rotate(25 62 16)' }),
+    ]);
+  }
+  if (category === 'wine') {
+    const dots = [[50, 20], [38, 34], [62, 34], [28, 50], [50, 50], [72, 50], [38, 66], [62, 66], [50, 80]];
+    return wrap(dots.map((d, i) => h('circle', { key: i, cx: d[0], cy: d[1], r: 11, fill: c }))
+      .concat([h('path', { key: 'vine', d: 'M50 10 C42 6 34 10 34 18', fill: 'none', stroke: '#5E7C53', strokeWidth: 3, strokeLinecap: 'round' })]));
+  }
+  if (category === 'whiskey') {
+    const heads = [0, 1, 2, 3, 4, 5].map(i => {
+      const cy = 22 + i * 11;
+      const cx = 50 + (i % 2 === 0 ? -10 : 10);
+      const rot = i % 2 === 0 ? -30 : 30;
+      return h('ellipse', { key: i, cx, cy, rx: 8, ry: 4, fill: c, transform: `rotate(${rot} ${cx} ${cy})` });
+    });
+    return wrap([h('line', { key: 'stem', x1: 50, y1: 95, x2: 50, y2: 15, stroke: c, strokeWidth: 3 })].concat(heads));
+  }
+  return null;
+}
+
 function BottleShape(props) {
   const { owned, color, name, bevId } = props;
   const hash = hashStr(bevId);
@@ -1621,7 +1669,10 @@ function BarDisplay(props) {
   const activeTheme = equippedItem && equippedItem.type === 'theme' ? equippedItem : null;
   const barBg = activeTheme ? BACKGROUND_THEMES[state.store.background] : 'linear-gradient(180deg, #33272A 0%, #201A1C 55%, #1B140D 100%)';
 
-  return h('div', { id: 'bar-display', style: { margin: '0 16px 16px', background: barBg, border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
+  return h('div', { id: 'bar-display', style: { position: 'relative', margin: '0 16px 16px', background: barBg, border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
+    activeTheme && h('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' } },
+      h(CategoryIcon, { category: activeTheme.category, size: 200, color: CATEGORY_STYLES[activeTheme.category].accent, opacity: 0.07 })
+    ),
     h(MedalRack, { state: state }),
 
     h('div', { style: { display: 'flex', alignItems: 'center', gap: 2, marginBottom: activeTheme ? 6 : 16 } },
@@ -2080,7 +2131,9 @@ function StoreItemCard(props) {
   const preview = item.type === 'background'
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 } })
     : item.type === 'theme'
-    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: `1px solid ${CATEGORY_STYLES[item.category].accent}`, boxShadow: `inset 0 0 8px ${CATEGORY_STYLES[item.category].accent}55`, flexShrink: 0 } })
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: `1px solid ${CATEGORY_STYLES[item.category].accent}`, boxShadow: `inset 0 0 8px ${CATEGORY_STYLES[item.category].accent}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+        h(CategoryIcon, { category: item.category, size: 20, color: CATEGORY_STYLES[item.category].accent, opacity: 0.9 })
+      )
     : item.type === 'iconPack'
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, ICON_PACKS[item.id].cash)
     : item.type === 'categoryBoost'
