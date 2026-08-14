@@ -215,6 +215,11 @@ const TUTORIAL_STEPS = [
     body: "Tap any beverage you own for an instant cash bonus, like this one. Idling earns steadily, but checking in and tapping around always earns more.",
   },
   {
+    targetId: 'bar-display',
+    title: 'Watch the shelves fill up',
+    body: "Every beverage you unlock shows up as its own bottle behind the bar, and the glasses below wander down to the counter now and then to stand in for customers. Purely for flavor, but it's a nice way to see how far you've come.",
+  },
+  {
     targetId: 'nav-tree',
     title: 'Prestige for good',
     body: "Once your debt hits zero, you can prestige from the Brewery screen: reset the run, take on a bigger loan next time, and spend permanent points here in the Prestige Tree.",
@@ -222,7 +227,7 @@ const TUTORIAL_STEPS = [
   {
     targetId: 'nav-buttons',
     title: 'More to discover',
-    body: 'The Store sells cosmetics and permanent equipment upgrades. Trophies tracks Brew Off boss battles. Settings has the change log and a reset button if you ever want a clean slate.',
+    body: 'The Store sells cosmetics and permanent equipment upgrades. Side Hustles has your bonus-point quests and Brew Off boss battles. Settings has the change log and a reset button if you ever want a clean slate.',
   },
   {
     targetId: null,
@@ -589,6 +594,14 @@ function fmtCompact(n) {
   return (neg ? '-$' : '$') + out;
 }
 function costLabel(n) { return n <= 0 ? 'Free' : fmtCompact(n); }
+function fmtDuration(sec) {
+  const mins = sec / 60;
+  if (mins < 60) { const m = Math.round(mins); return `${m} minute${m === 1 ? '' : 's'}`; }
+  const hours = sec / 3600;
+  if (hours < 24) return `${hours.toFixed(1)} hours`;
+  const days = sec / 86400;
+  return `${days.toFixed(1)} days`;
+}
 function rankOf(state, nodeId) { return state.prestigeUpgrades[nodeId] || 0; }
 function beverageNodesMaxed(bevId, state) {
   return rankOf(state, `${bevId}_rate`) >= NODE_MAX_RANK && rankOf(state, `${bevId}_cost`) >= NODE_MAX_RANK;
@@ -682,6 +695,7 @@ function Fermentary() {
   const [tutorialStep, setTutorialStep] = useState(0);
   const [view, setView] = useState('game');
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [welcomeBack, setWelcomeBack] = useState(null);
   const toastTimer = useRef(null);
   const stateRef = useRef(null);
   stateRef.current = state;
@@ -724,7 +738,7 @@ function Fermentary() {
         setLoaded(true);
         if (!next.tutorialDismissed) setTutorialOpen(true);
         if (loadedState && elapsedSec > 20) {
-          showToast(`Welcome back — earned ${fmtMoney(result.earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
+          setWelcomeBack({ earned: result.earned, elapsedSec });
         }
       }
     })();
@@ -813,7 +827,7 @@ function Fermentary() {
       const result = applyOfflineCatchUp(prev, elapsedSec);
       setState(p => p && Object.assign({}, p, { cash: result.cash, totalEarned: result.totalEarned, debt: result.debt, lastSeen: nowTs }));
       if (elapsedSec > 20) {
-        showToast(`Welcome back — earned ${fmtMoney(result.earned)} while away (${Math.round(elapsedSec / 60)} min).`, 'good');
+        setWelcomeBack({ earned: result.earned, elapsedSec });
       }
     }
     document.addEventListener('visibilitychange', catchUp);
@@ -1041,6 +1055,7 @@ function Fermentary() {
     h('style', null, `
       @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
       @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-26px); } }
+      @keyframes neonFlicker { 0%, 19%, 21%, 23%, 54%, 56%, 100% { opacity: 1; } 20%, 22%, 55% { opacity: 0.7; } }
       .btn { transition: transform 0.12s ease, filter 0.12s ease; }
       .btn:active { transform: scale(0.96); }
       .btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1061,6 +1076,7 @@ function Fermentary() {
     }, toast.msg),
 
     tutorialOpen && h(TutorialOverlay, { step: tutorialStep, onNext: () => setTutorialStep(s => Math.min(TUTORIAL_STEPS.length - 1, s + 1)), onBack: () => setTutorialStep(s => Math.max(0, s - 1)), onClose: closeTutorial }),
+    welcomeBack && h(WelcomeBackModal, { earned: welcomeBack.earned, elapsedSec: welcomeBack.elapsedSec, onClose: () => setWelcomeBack(null) }),
 
     h('div', { style: { padding: '14px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
       h('div', { id: 'nav-buttons', style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 } },
@@ -1074,9 +1090,9 @@ function Fermentary() {
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'store' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'store' ? '#6B5A9C' : '#5A4630'}`, color: view === 'store' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
         }, view === 'store' ? '← Brewery' : '🛍️ Store'),
         h('button', {
-          onClick: () => setView(v => v === 'achievements' ? 'game' : 'achievements'), 'aria-label': 'Achievements',
+          onClick: () => setView(v => v === 'achievements' ? 'game' : 'achievements'), 'aria-label': 'Side Hustles',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'achievements' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'achievements' ? '#6B5A9C' : '#5A4630'}`, color: view === 'achievements' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-        }, view === 'achievements' ? '← Brewery' : '🏆 Trophies'),
+        }, view === 'achievements' ? '← Brewery' : '📋 Side Hustles'),
         h('button', {
           onClick: openTutorial, 'aria-label': 'Show tutorial',
           style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -1121,7 +1137,7 @@ function Fermentary() {
       h('span', { style: { fontSize: 11, color: '#8A7CA0' } }, 'Spend in Tree →')
     ),
 
-    h(TasksCard, { state: state }),
+    h(BarDisplay, { state: state }),
 
     !debtCleared && h('div', { style: { padding: '0 16px 16px', display: 'flex', flexWrap: 'wrap', gap: 8 } },
       unlockedPayTiers(state).map(amt => h(HoldableButton, {
@@ -1224,26 +1240,195 @@ function SectionLabel(props) {
   return h('div', { id: props.id, style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
 }
 
-function TasksCard(props) {
+function SideHustlesSection(props) {
   const { state } = props;
   if (!state.tasks) return null;
   const reward = taskReward(state.prestige);
-  return h('div', { style: { margin: '0 16px 14px', background: '#1E2A20', border: '1px solid #354A38', borderRadius: 10, padding: 12 } },
-    h('div', { style: { fontSize: 11, fontWeight: 700, color: '#9CC28A', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 } }, `📋 Tasks this run · +${reward} pts each`),
-    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 7 } },
+  return h('div', { style: { marginBottom: 22 } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 } },
+      h('div', { style: { fontSize: 13, color: '#9CC28A', fontWeight: 700, fontFamily: 'Fraunces, serif' } }, '📋 Side Hustles'),
+      h('span', { style: { fontSize: 10, color: '#6B8A5E', fontFamily: 'JetBrains Mono, monospace' } }, `+${reward} pts each`)
+    ),
+    h('div', { style: { fontSize: 10.5, color: '#8A7860', marginBottom: 10, lineHeight: 1.5 } }, "Quick jobs on the side — a new set every run. Finish one and the points land immediately, no need to wait for prestige."),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
       state.tasks.list.map(id => {
         const task = TASK_BY_ID[id];
         if (!task) return null;
         const done = !!state.tasks.completed[id];
         const target = task.target(state.prestige);
         const progress = Math.min(target, task.progress(state));
-        return h('div', { key: id, style: { display: 'flex', alignItems: 'center', gap: 8 } },
-          h('span', { style: { fontSize: 13, color: done ? '#9CC28A' : '#4A5A45', flexShrink: 0 } }, done ? '✅' : '⬡'),
-          h('span', { style: { fontSize: 11.5, color: done ? '#8FAE85' : '#C9BBA3', flex: 1, textDecoration: done ? 'line-through' : 'none' } }, task.desc(state.prestige)),
-          h('span', { style: { fontSize: 10, color: '#6B8A5E', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } }, `${fmtNum(progress)}/${fmtNum(target)}`)
+        const pct = target > 0 ? Math.min(100, (progress / target) * 100) : 0;
+        return h('div', { key: id, style: { background: done ? 'linear-gradient(135deg, #223225, #1A2618)' : '#1E2A20', border: `1px solid ${done ? '#4E7A45' : '#354A38'}`, borderRadius: 9, padding: '10px 12px' } },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 } },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 } },
+              h('span', { style: { fontSize: 14, flexShrink: 0 } }, done ? '✅' : '🔸'),
+              h('span', { style: { fontSize: 12, color: done ? '#8FAE85' : '#C9BBA3', textDecoration: done ? 'line-through' : 'none' } }, task.desc(state.prestige))
+            ),
+            h('span', { style: { flexShrink: 0, fontSize: 10, fontWeight: 700, color: done ? '#6B8A5E' : '#9CC28A', background: 'rgba(0,0,0,0.25)', borderRadius: 5, padding: '2px 7px', fontFamily: 'JetBrains Mono, monospace' } }, done ? 'DONE' : `+${reward}`)
+          ),
+          !done && h('div', { style: { height: 5, borderRadius: 3, background: '#141C15', overflow: 'hidden', marginTop: 7 } },
+            h('div', { style: { height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #4E7A45, #9CC28A)' } })
+          ),
+          !done && h('div', { style: { fontSize: 9.5, color: '#6B8A5E', fontFamily: 'JetBrains Mono, monospace', marginTop: 3, textAlign: 'right' } }, `${fmtNum(progress)}/${fmtNum(target)}`)
         );
       })
     )
+  );
+}
+
+// Hand-drawn pixel sprites (a grid of single characters, each mapped to a
+// color) rendered as SVG rects — real 8-bit-style blocky art instead of
+// relying on however a device's font renders an emoji glyph.
+// Bottle: a small silhouette (neck + body) tinted by category color, meant
+// to sit on a backlit glass shelf line rather than a wood plank.
+function hashStr(s) {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return hash;
+}
+
+// A handful of bottle silhouettes (short & stout, tall & thin, flask-ish,
+// long-necked) so bottles in the same category don't all look identical —
+// each beverage deterministically picks one based on its own id.
+const BOTTLE_SHAPES = [
+  { neckW: 2, neckH: 3, bodyW: 7, bodyH: 14 },
+  { neckW: 2, neckH: 5, bodyW: 6, bodyH: 17 },
+  { neckW: 3, neckH: 4, bodyW: 8, bodyH: 13 },
+  { neckW: 2, neckH: 3, bodyW: 9, bodyH: 11 },
+];
+const LABEL_COLORS = ['#F0E4C4', '#EDE3D0', '#F5D98C', '#E3D4A8'];
+
+// Bottle: neck + body tinted by category, plus a small paper-label band so
+// each one reads as its own bottle rather than a category-colored clone.
+function BottleShape(props) {
+  const { owned, color, name, bevId } = props;
+  const hash = hashStr(bevId);
+  const shape = BOTTLE_SHAPES[hash % BOTTLE_SHAPES.length];
+  const labelColor = LABEL_COLORS[(hash >> 3) % LABEL_COLORS.length];
+  const labelTop = 0.4 + ((hash >> 6) % 3) * 0.12; // vary label position a bit
+  return h('div', {
+    title: name,
+    style: { width: shape.bodyW + 2, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: owned ? 1 : 0.16 },
+  },
+    h('div', { style: { width: shape.neckW, height: shape.neckH, background: owned ? color : 'transparent', border: owned ? 'none' : '1px dashed #6B5D48', borderRadius: '1px 1px 0 0' } }),
+    h('div', {
+      style: {
+        position: 'relative', width: owned ? shape.bodyW : Math.max(4, shape.bodyW - 3), height: owned ? shape.bodyH : Math.max(8, shape.bodyH - 5),
+        marginTop: -1, borderRadius: '1px 1px 2px 2px', overflow: 'hidden',
+        background: owned ? `linear-gradient(180deg, ${color}E6 0%, ${color}80 70%, ${color}40 100%)` : 'transparent',
+        border: owned ? `1px solid ${color}` : '1px dashed #6B5D48',
+        boxShadow: owned ? `0 0 4px ${color}55` : 'none',
+      },
+    },
+      owned && h('div', { style: { position: 'absolute', left: 0, right: 0, top: `${labelTop * 100}%`, height: '26%', background: labelColor, opacity: 0.85 } })
+    )
+  );
+}
+
+// Glass: a small tapered silhouette that slides down toward the counter and
+// fades out when "away" (being used by a customer), then slides back and
+// fades in when it returns to the shelf.
+function GlassShape(props) {
+  const { away, index, glassCount } = props;
+  // Spread landed glasses out along the counter instead of stacking them
+  // directly below their shelf slot.
+  const spread = 11;
+  const xOffset = away ? (index - (glassCount - 1) / 2) * spread : 0;
+  return h('div', {
+    style: {
+      position: 'relative', zIndex: away ? 20 : 1, width: 7, height: 12, flexShrink: 0,
+      background: 'linear-gradient(180deg, rgba(240,228,196,0.55), rgba(240,228,196,0.12))',
+      border: '1px solid rgba(240,228,196,0.45)', borderRadius: '0 0 2px 2px',
+      clipPath: 'polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%)',
+      transform: away ? `translate(${xOffset}px, 52px) scale(0.85)` : 'translate(0, 0) scale(1)',
+      opacity: away ? 0.92 : 1,
+      transition: 'transform 0.9s ease, opacity 0.5s ease',
+    },
+  });
+}
+
+// A backlit glass shelf: a thin bright line with a soft amber glow beneath
+// it, with content sitting on top of the line — the signature look from
+// the reference photo.
+function GlowShelf(props) {
+  return h('div', { style: { position: 'relative', paddingBottom: 8, overflow: 'visible' } },
+    h('div', { style: { display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: props.gap || 2.5, minHeight: props.minHeight || 18 } }, props.children),
+    h('div', { style: { position: 'absolute', bottom: 0, left: '4%', right: '4%', height: 2, background: '#E8B94A', borderRadius: 1, boxShadow: '0 0 6px 1px rgba(232,185,74,0.85), 0 5px 16px 3px rgba(232,185,74,0.35)' } })
+  );
+}
+
+function BarDisplay(props) {
+  const { state } = props;
+  const ownedCount = Object.values(state.beverages).filter(b => b.level > 0).length;
+  const glassCount = Math.min(8, Math.max(1, ownedCount));
+  const [awaySet, setAwaySet] = useState(() => new Set());
+
+  useEffect(() => {
+    let timer = null;
+    function tick() {
+      setAwaySet(prev => {
+        const next = new Set(prev);
+        Array.from(next).forEach(i => { if (i >= glassCount) next.delete(i); });
+        // Any or all glasses can be away at once now — no cap. Still just
+        // one change per tick so it drifts naturally rather than jumping.
+        if (next.size < glassCount && Math.random() < 0.6) {
+          const candidates = [];
+          for (let i = 0; i < glassCount; i++) if (!next.has(i)) candidates.push(i);
+          if (candidates.length) next.add(candidates[Math.floor(Math.random() * candidates.length)]);
+        } else if (next.size > 0) {
+          const arr = Array.from(next);
+          next.delete(arr[Math.floor(Math.random() * arr.length)]);
+        }
+        return next;
+      });
+      timer = setTimeout(tick, 1800 + Math.random() * 2200);
+    }
+    timer = setTimeout(tick, 1500);
+    return () => clearTimeout(timer);
+  }, [glassCount]);
+
+  return h('div', { id: 'bar-display', style: { margin: '0 16px 16px', background: 'linear-gradient(180deg, #33272A 0%, #201A1C 55%, #1B140D 100%)', border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
+    h('div', { style: { textAlign: 'center', marginBottom: 14 } },
+      h('span', {
+        style: {
+          display: 'inline-block', padding: '4px 16px', borderRadius: 4,
+          background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(224,169,62,0.15)',
+          fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 700, fontSize: 16, letterSpacing: 0.5,
+          color: '#FFEAB0',
+          textShadow: '0 0 4px rgba(255,205,110,0.95), 0 0 10px rgba(224,169,62,0.85), 0 0 22px rgba(224,169,62,0.55), 0 0 42px rgba(212,175,44,0.35)',
+          animation: 'neonFlicker 4s infinite',
+        },
+      }, 'Idle Brew')
+    ),
+
+    // Top shelf: every beverage, in unlock order, as its own distinct bottle.
+    h(GlowShelf, { minHeight: 20 },
+      BEVERAGES.map(b => {
+        const cur = state.beverages[b.id];
+        const owned = cur && cur.level > 0;
+        return h(BottleShape, { key: b.id, bevId: b.id, owned: owned, color: CATEGORY_STYLES[b.category].accent, name: b.name });
+      })
+    ),
+
+    h('div', { style: { height: 14 } }),
+
+    // Lower shelf: glassware, one per beverage owned (capped). Glasses
+    // wander down to visible, spread-out spots on the counter and back,
+    // standing in for customers being served.
+    h(GlowShelf, { minHeight: 14, gap: 5 },
+      Array.from({ length: glassCount }).map((_, i) => h(GlassShape, { key: i, index: i, glassCount: glassCount, away: awaySet.has(i) }))
+    ),
+
+    // Bar counter with a glowing front edge, like the under-lit counter in the photo.
+    h('div', { style: { position: 'relative', height: 24, marginTop: 20, borderRadius: '3px 3px 2px 2px', background: 'linear-gradient(180deg, #5E4B3C 0%, #3A2C1D 100%)', boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.08)' } },
+      h('div', { style: { position: 'absolute', bottom: -2, left: 0, right: 0, height: 2, background: '#E8B94A', boxShadow: '0 0 8px 2px rgba(232,185,74,0.9), 0 6px 18px 4px rgba(232,185,74,0.3)' } }),
+      h('div', { style: { position: 'absolute', left: 10, top: 5, display: 'flex', gap: 3 } },
+        h('div', { style: { width: 5, height: 5, borderRadius: '50%', background: '#D9702E' } }),
+        h('div', { style: { width: 5, height: 5, borderRadius: '50%', background: '#E0913A' } }),
+        h('div', { style: { width: 5, height: 5, borderRadius: '50%', background: '#C85A2A' } })
+      )
+    ),
+    h('div', { style: { fontSize: 9.5, color: '#8A7860', textAlign: 'center', marginTop: 8 } }, `${ownedCount} of ${BEVERAGES.length} beverages on the shelves`)
   );
 }
 
@@ -1440,6 +1625,11 @@ function PrestigeTreeView(props) {
 // Changelog reflects the actual build history of this game, oldest first
 // when read bottom-to-top like a real release log (newest shown first).
 const CHANGELOG = [
+  { version: '1.14', title: 'The Bar', notes: 'A visual bar behind the ledger — shelves fill with a uniquely-shaped bottle for every beverage you unlock, and the glasses below wander down to spread out on the counter and back, standing in for customers.' },
+  { version: '1.13', title: 'Side Hustles', notes: 'Renamed the Trophies page to Side Hustles and merged the Tasks list into it, redesigned as a quest list with progress bars and reward tags alongside the Brew Off Trophy Case.' },
+  { version: '1.12', title: 'Bigger Payments', notes: 'Added purchasable payment tiers in the Store ($500 up to $500,000), press-and-hold rapid-fire on every Pay/Invest button, and compact K/M/B/T formatting so large numbers stop overflowing their cards.' },
+  { version: '1.11', title: 'Welcome Back', notes: 'Replaced the auto-vanishing "welcome back" toast with a real popup, and fixed offline earnings not catching up when returning from a backgrounded tab or locked phone instead of a full page reload.' },
+  { version: '1.10', title: 'Guided Tour', notes: 'Rebuilt the tutorial as a spotlight walkthrough that highlights the real controls on screen instead of showing static cards at the bottom.' },
   { version: '1.9', title: 'Settings', notes: 'Added this page — change log, roadmap, and a proper in-app reset that doesn\u2019t require clearing your browser cache.' },
   { version: '1.8', title: 'Flat Interest', notes: 'Replaced compounding debt interest with a flat per-second rate, so leaving the game running no longer produces an unreadable debt number.' },
   { version: '1.7', title: 'Brew Off', notes: 'Added boss battles — challenge Big Sal, Coldbrew Katrina, The Vintner Baron, and The Whiskey Wraith for permanent trophies, plus a Trophy Case to track them.' },
@@ -1456,11 +1646,12 @@ const CHANGELOG = [
 // this list is really just notes-to-self about what could come next.
 // Whoever's holding this file should feel free to edit it directly.
 const UPCOMING = [
+  'Simple customer figures at the bar, not just glasses',
   'More Brew Off bosses, and a way to replay ones you\u2019ve already beaten',
   'Leaderboards or a shareable results card',
   'A few more cosmetic themes and icon packs',
   'Export / import a save code to move progress between devices',
-  'Prestige Tree nodes for the new Equipment boosts',
+  'Prestige Tree nodes for the Equipment boosts',
 ];
 
 function SettingsView(props) {
@@ -1511,6 +1702,8 @@ function AchievementsView(props) {
   const now = Date.now();
 
   return h('div', { style: { padding: '4px 16px 0' } },
+    h(SideHustlesSection, { state: state }),
+
     h('div', { style: { margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px' } },
       h('div', { style: { fontSize: 12, color: '#C9B8E8', fontWeight: 600 } }, '🏆 Trophy Case'),
       h('div', { style: { fontSize: 10.5, color: '#8A7CA0', marginTop: 3 } }, 'Challenge each Brew Off boss once you hit their prestige level. Earn their cash target within 60 seconds to win the trophy — permanently.')
@@ -1630,6 +1823,31 @@ function StoreItemCard(props) {
   );
 }
 
+
+function WelcomeBackModal(props) {
+  const { earned, elapsedSec, onClose } = props;
+  return h('div', {
+    style: { position: 'fixed', inset: 0, zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(10,7,4,0.8)' },
+    onClick: onClose,
+  },
+    h('div', {
+      onClick: (e) => e.stopPropagation(),
+      style: { width: '100%', maxWidth: 380, background: '#2C2116', border: '1px solid #4A3826', borderRadius: 16, padding: '24px 22px', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', textAlign: 'center' },
+    },
+      h('div', { style: { fontSize: 34, marginBottom: 8 } }, '🍺'),
+      h('div', { style: { fontFamily: 'Fraunces, serif', fontSize: 19, fontWeight: 700, color: '#E0A93E', marginBottom: 10 } }, 'Welcome back!'),
+      h('div', { style: { fontSize: 13.5, color: '#C9BBA3', lineHeight: 1.6, marginBottom: 22 } },
+        `Your brewery kept running while you were away for ${fmtDuration(elapsedSec)}. You earned `,
+        h('span', { style: { color: '#9CC28A', fontWeight: 700 } }, fmtCompact(earned)),
+        ' in that time.'
+      ),
+      h('button', {
+        className: 'btn', onClick: onClose,
+        style: { width: '100%', background: '#E0A93E', border: 'none', borderRadius: 8, padding: '11px 0', color: '#241A12', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' },
+      }, 'Nice!')
+    )
+  );
+}
 
 function TutorialOverlay(props) {
   const { step, onNext, onBack, onClose } = props;
