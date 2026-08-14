@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Idle Brew</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Pacifico&display=swap" />
 <style>
   html, body { margin: 0; padding: 0; background: #1B140D; }
   * { box-sizing: border-box; }
@@ -1388,15 +1388,17 @@ function BarDisplay(props) {
   }, [glassCount]);
 
   return h('div', { id: 'bar-display', style: { margin: '0 16px 16px', background: 'linear-gradient(180deg, #33272A 0%, #201A1C 55%, #1B140D 100%)', border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
-    h('div', { style: { textAlign: 'center', marginBottom: 14 } },
+    h('div', { style: { textAlign: 'center', marginBottom: 16 } },
       h('span', {
         style: {
-          display: 'inline-block', padding: '4px 16px', borderRadius: 4,
-          background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(224,169,62,0.15)',
-          fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 700, fontSize: 16, letterSpacing: 0.5,
-          color: '#FFEAB0',
-          textShadow: '0 0 4px rgba(255,205,110,0.95), 0 0 10px rgba(224,169,62,0.85), 0 0 22px rgba(224,169,62,0.55), 0 0 42px rgba(212,175,44,0.35)',
-          animation: 'neonFlicker 4s infinite',
+          display: 'inline-block', padding: '8px 22px', borderRadius: 6,
+          background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(224,169,62,0.1)',
+          boxShadow: '0 0 22px 3px rgba(224,169,62,0.16), inset 0 0 14px rgba(224,169,62,0.06)',
+          fontFamily: "'Pacifico', cursive", fontSize: 21, letterSpacing: 0.5,
+          color: '#FFF8E9',
+          WebkitTextStroke: '0.4px rgba(70,40,10,0.3)',
+          textShadow: '0 0 2px rgba(255,248,233,0.95), 0 0 6px rgba(255,205,110,0.9), 0 0 14px rgba(224,169,62,0.75), 0 0 28px rgba(224,169,62,0.5), 0 0 48px rgba(212,175,44,0.32)',
+          animation: 'neonFlicker 4.2s infinite',
         },
       }, 'Idle Brew')
     ),
