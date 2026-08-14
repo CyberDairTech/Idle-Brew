@@ -11,9 +11,9 @@
   #root { min-height: 100vh; }
   button { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   @keyframes splashLoad { from { transform: translateX(-100%); } to { transform: translateX(0%); } }
-  .fermentary-msg { padding: 40px 20px; text-align: center; color: #E8DCC4; font-family: -apple-system, Inter, sans-serif; max-width: 420px; margin: 40px auto; }
-  .fermentary-msg h2 { margin-bottom: 8px; }
-  .fermentary-msg p { color: #A6957A; font-size: 13px; line-height: 1.6; }
+  .idlebrew-msg { padding: 40px 20px; text-align: center; color: #E8DCC4; font-family: -apple-system, Inter, sans-serif; max-width: 420px; margin: 40px auto; }
+  .idlebrew-msg h2 { margin-bottom: 8px; }
+  .idlebrew-msg p { color: #A6957A; font-size: 13px; line-height: 1.6; }
   .static-splash {
     position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
@@ -63,11 +63,11 @@ loadFirstThatWorks(REACT_SOURCES)
   .then(function () { return loadFirstThatWorks(REACTDOM_SOURCES); })
   .then(function () {
     if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') throw new Error('libs missing after load');
-    runFermentary();
+    runIdleBrew();
   })
   .catch(function () {
     document.getElementById('root').innerHTML =
-      '<div class="fermentary-msg"><h2>Couldn\'t load</h2>' +
+      '<div class="idlebrew-msg"><h2>Couldn\'t load</h2>' +
       '<p>This game loads two small files from the internet the first time it opens, and none of the ' +
       'usual sources (jsDelivr, cdnjs, unpkg) got through. You may be fully offline, or on a network that ' +
       'blocks JavaScript CDNs entirely. Try a different network, such as a personal hotspot.</p></div>';
@@ -77,7 +77,7 @@ loadFirstThatWorks(REACT_SOURCES)
 // No JSX / no Babel here on purpose — this app is written directly with
 // React.createElement so it has zero build-time dependency and nothing to
 // fail at runtime beyond React itself loading.
-function runFermentary() {
+function runIdleBrew() {
 const { useState, useEffect, useRef, useCallback } = React;
 const h = React.createElement;
 
@@ -102,7 +102,8 @@ const storage = {
   },
 };
 
-const SAVE_KEY = 'fermentary-save-v3';
+const SAVE_KEY = 'idlebrew-save-v3';
+const LEGACY_SAVE_KEY = 'fermentary-save-v3'; // pre-rename key, read once for migration only
 
 // Each beverage earns cash every second on its own. "Proficiency" is a level
 // you buy up: rate = baseRate * level, so cost grows exponentially while
@@ -805,10 +806,10 @@ function applyOfflineCatchUp(base, elapsedSec) {
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(error) { return { error }; }
-  componentDidCatch(error, info) { console.error('Fermentary render error:', error, info); }
+  componentDidCatch(error, info) { console.error('IdleBrew render error:', error, info); }
   render() {
     if (this.state.error) {
-      return h('div', { className: 'fermentary-msg' },
+      return h('div', { className: 'idlebrew-msg' },
         h('h2', null, 'Something went wrong'),
         h('p', null, String((this.state.error && this.state.error.message) || this.state.error))
       );
@@ -817,7 +818,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function Fermentary() {
+function IdleBrew() {
   const [state, setState] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState(null);
@@ -841,6 +842,16 @@ function Fermentary() {
         const res = await storage.get(SAVE_KEY);
         if (res && res.value) loadedState = JSON.parse(res.value);
       } catch (e) { loadedState = null; }
+
+      if (!loadedState) {
+        try {
+          const legacy = await storage.get(LEGACY_SAVE_KEY);
+          if (legacy && legacy.value) {
+            loadedState = JSON.parse(legacy.value);
+            storage.set(SAVE_KEY, legacy.value).catch(() => {}); // carry it forward under the new key
+          }
+        } catch (e) {}
+      }
 
       const base = loadedState || defaultState();
       // Merge in any beverages added since this save was created (e.g. new
@@ -2251,12 +2262,27 @@ function SplashScreen(props) {
 function AppRoot() {
   const [phase, setPhase] = useState('visible');
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('fading'), 2200);
-    const t2 = setTimeout(() => setPhase('gone'), 3100);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    let t1 = setTimeout(() => setPhase('fading'), 2200);
+    let t2 = setTimeout(() => setPhase('gone'), 3100);
+    function onPageShow(e) {
+      // A bfcache restore (e.g. swiping back to a previously-open tab)
+      // keeps React state alive instead of re-running this module, so the
+      // splash wouldn't otherwise replay. Force it to run again.
+      if (e.persisted) {
+        clearTimeout(t1); clearTimeout(t2);
+        setPhase('visible');
+        t1 = setTimeout(() => setPhase('fading'), 2200);
+        t2 = setTimeout(() => setPhase('gone'), 3100);
+      }
+    }
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      clearTimeout(t1); clearTimeout(t2);
+      window.removeEventListener('pageshow', onPageShow);
+    };
   }, []);
   return h(React.Fragment, null,
-    h(Fermentary),
+    h(IdleBrew),
     phase !== 'gone' && h(SplashScreen, { fading: phase === 'fading' })
   );
 }
@@ -2265,10 +2291,10 @@ try {
   const root = ReactDOM.createRoot(document.getElementById('root'));
   root.render(h(ErrorBoundary, null, h(AppRoot)));
 } catch (err) {
-  document.getElementById('root').innerHTML = '<div class="fermentary-msg"><h2>Something went wrong</h2><p>' + ((err && err.message) || 'Unknown error') + '</p></div>';
+  document.getElementById('root').innerHTML = '<div class="idlebrew-msg"><h2>Something went wrong</h2><p>' + ((err && err.message) || 'Unknown error') + '</p></div>';
 }
 
-} // end runFermentary
+} // end runIdleBrew
 </script>
 </body>
 </html>
