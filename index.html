@@ -1869,6 +1869,12 @@ function PrestigeTreeView(props) {
 // Changelog reflects the actual build history of this game, oldest first
 // when read bottom-to-top like a real release log (newest shown first).
 const CHANGELOG = [
+  { version: '1.20', title: 'Idle Brew', notes: 'Renamed the app throughout — the file itself and every internal reference — from Fermentary to Idle Brew. Existing saves carry forward automatically under the new name, no progress lost.' },
+  { version: '1.19', title: 'Title Screen', notes: 'Added a branded splash screen that appears on every load, including returning from a backgrounded tab, and fades into the game after a couple seconds.' },
+  { version: '1.18', title: '50 Achievements', notes: 'Added a dedicated Achievements page — 50 permanent unlocks spanning wealth, prestige level, beverage collection, proficiency, the Store, the Recipe Book, and Side Hustles. Locked ones show as outlined silhouettes with their requirement listed.' },
+  { version: '1.17', title: 'Recipe Book', notes: 'Renamed the Prestige Tree tab to the Recipe Book, and scaled back prestige point income — buying everything in the Store and Recipe Book now takes until roughly generation 100 instead of 39, so the 50 and 100 Brew Off bosses stay meaningful goals.' },
+  { version: '1.16', title: 'Top Shelf & Trophy Case', notes: 'Beverages that reach Proficiency Lv.25 graduate to shelves flanking the neon sign. Brew Off trophies you\u2019ve won now hang above the bar in their own mounted shadow boxes, with dim silhouettes for the ones you haven\u2019t earned yet.' },
+  { version: '1.15', title: 'Themes', notes: 'Added Store Themes — The Bar, The Cidery, The Winery, The Distillery — each a background and a category rate boost in one. Only whichever theme is currently equipped has its boost active.' },
   { version: '1.14', title: 'The Bar', notes: 'A visual bar behind the ledger — shelves fill with a uniquely-shaped bottle for every beverage you unlock, and the glasses below wander down to spread out on the counter and back, standing in for customers.' },
   { version: '1.13', title: 'Side Hustles', notes: 'Renamed the Trophies page to Side Hustles and merged the Tasks list into it, redesigned as a quest list with progress bars and reward tags alongside the Brew Off Trophy Case.' },
   { version: '1.12', title: 'Bigger Payments', notes: 'Added purchasable payment tiers in the Store ($500 up to $500,000), press-and-hold rapid-fire on every Pay/Invest button, and compact K/M/B/T formatting so large numbers stop overflowing their cards.' },
