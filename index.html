@@ -6,7 +6,7 @@
 <title>Idle Brew</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&family=Pacifico&display=swap" />
 <style>
-  html, body { margin: 0; padding: 0; background: #1B140D; }
+  html, body { margin: 0; padding: 0; background: linear-gradient(180deg, #241A12 0%, #150F09 100%); }
   * { box-sizing: border-box; }
   #root { min-height: 100vh; }
   button { -webkit-user-select: none; -moz-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
@@ -14,10 +14,19 @@
   .fermentary-msg { padding: 40px 20px; text-align: center; color: #E8DCC4; font-family: -apple-system, Inter, sans-serif; max-width: 420px; margin: 40px auto; }
   .fermentary-msg h2 { margin-bottom: 8px; }
   .fermentary-msg p { color: #A6957A; font-size: 13px; line-height: 1.6; }
+  .static-splash {
+    position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #241A12 0%, #150F09 100%);
+  }
+  .static-splash .word {
+    font-family: 'Pacifico', 'Fraunces', cursive, serif; font-size: 26px; color: #FFF8E9; letter-spacing: 0.5px;
+    text-shadow: 0 0 4px rgba(255,205,110,0.9), 0 0 12px rgba(224,169,62,0.7), 0 0 26px rgba(224,169,62,0.4);
+  }
 </style>
 </head>
 <body>
-<div id="root"><div class="fermentary-msg"><h2>Loading Idle Brew…</h2></div></div>
+<div id="root"><div class="static-splash"><div class="word">Idle Brew</div></div></div>
 
 <script>
 // Try several CDNs in turn, since some networks (school/work/public wifi)
@@ -1530,19 +1539,30 @@ function SideShelf(props) {
   );
 }
 
-// Hangs any Brew Off trophies the player has actually won, like awards
-// mounted on the wall above a real bar. Shows nothing at all if none yet —
-// no empty hooks on display for a new player.
+// A small wall-mounted shadow box per Brew Off trophy — always all four,
+// won ones lit up with a glow, unearned ones a dim silhouette in a dashed
+// frame rather than a solid box, so it reads as "empty slot" not "bug."
 function MedalRack(props) {
   const { state } = props;
-  const wonTrophies = BREW_OFF_BOSSES.filter(b => state.trophies[b.id]);
-  if (wonTrophies.length === 0) return null;
-  return h('div', { style: { display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 12 } },
-    wonTrophies.map(b => h('div', { key: b.id, title: `${b.trophy} — beat ${b.name}`, style: { display: 'flex', flexDirection: 'column', alignItems: 'center' } },
-      h('div', { style: { width: 1, height: 9, background: 'rgba(200,180,140,0.45)' } }),
-      h('div', { style: { width: 3, height: 3, borderRadius: '50%', background: 'rgba(200,180,140,0.6)', marginBottom: 2 } }),
-      h('div', { style: { fontSize: 24, filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.55))' } }, b.icon)
-    ))
+  return h('div', { style: { display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 14 } },
+    BREW_OFF_BOSSES.map(b => {
+      const won = !!state.trophies[b.id];
+      return h('div', {
+        key: b.id,
+        title: won ? `${b.trophy} — beat ${b.name}` : `Locked — beat ${b.name} (prestige ${b.minLevel}+) to earn the ${b.trophy}`,
+        style: {
+          width: 42, height: 42, borderRadius: 6,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: won ? 'linear-gradient(180deg, #2C2116 0%, #150F09 100%)' : '#160F09',
+          border: won ? '2px solid #6B5636' : '2px dashed #3A2C1D',
+          boxShadow: won
+            ? 'inset 0 2px 6px rgba(0,0,0,0.55), inset 0 -1px 2px rgba(255,255,255,0.05), 0 0 10px 1px rgba(224,169,62,0.25)'
+            : 'inset 0 2px 6px rgba(0,0,0,0.6)',
+        },
+      },
+        h('span', { style: { fontSize: 21, filter: won ? 'none' : 'grayscale(1) brightness(0.35)', opacity: won ? 1 : 0.45 } }, b.icon)
+      );
+    })
   );
 }
 
@@ -2213,7 +2233,7 @@ function SplashScreen(props) {
   },
     h('img', {
       src: `data:image/jpeg;base64,${LOGO_B64}`,
-      style: { width: 150, height: 150, borderRadius: 20, boxShadow: '0 10px 34px rgba(0,0,0,0.55)', marginBottom: 20, objectFit: 'cover' },
+      style: { width: 220, height: 220, borderRadius: 24, boxShadow: '0 12px 40px rgba(0,0,0,0.55)', marginBottom: 22, objectFit: 'cover' },
     }),
     h('div', { style: { fontFamily: "'Pacifico', cursive", fontSize: 26, color: '#FFF8E9', letterSpacing: 0.5,
       textShadow: '0 0 4px rgba(255,205,110,0.9), 0 0 12px rgba(224,169,62,0.7), 0 0 26px rgba(224,169,62,0.4)' } }, 'Idle Brew'),
