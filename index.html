@@ -364,6 +364,10 @@ const BACKGROUND_THEMES = {
   bg_forest: 'linear-gradient(180deg, #16221A 0%, #0A100C 100%)',
   bg_copper: 'linear-gradient(180deg, #2E1D0E 0%, #1A1006 100%)',
   bg_oakcellar: 'linear-gradient(180deg, #241811 0%, #120C07 100%)',
+  theme_bar: 'linear-gradient(180deg, #2E2013 0%, #170F08 100%)',
+  theme_cidery: 'linear-gradient(180deg, #2B2914 0%, #14130A 100%)',
+  theme_winery: 'linear-gradient(180deg, #2A1620 0%, #150A10 100%)',
+  theme_distillery: 'linear-gradient(180deg, #241A10 0%, #100B06 100%)',
 };
 const ICON_PACKS = {
   icons_classic: { cash: '💰', debt: '⚠️', income: '📈', lifetime: '🏆', tap: '⚡', lock: '🔒', upgrade: '⬆️', prestige: '✨', reset: '🔄' },
@@ -410,6 +414,15 @@ const STORE_ITEMS = [
   { id: 'pay_5000', type: 'payTier', amount: 5000, cost: 20, name: 'Bank Deposit Bag', desc: 'Unlocks a $5,000 Pay/Invest button.' },
   { id: 'pay_50000', type: 'payTier', amount: 50000, cost: 45, name: 'Armored Truck Pickup', desc: 'Unlocks a $50,000 Pay/Invest button.' },
   { id: 'pay_500000', type: 'payTier', amount: 500000, cost: 90, name: 'Wire Transfer Line', desc: 'Unlocks a $500,000 Pay/Invest button.' },
+
+  // Themes: a background you can equip *and* a category boost — but the
+  // boost is only active while that theme is your current background, and
+  // only one background can ever be equipped at once. Switching themes
+  // trades which category benefits.
+  { id: 'theme_bar', type: 'theme', category: 'beer', boostPct: 0.25, name: 'The Bar', cost: 15, desc: '+25% beer rate while this is your active background.' },
+  { id: 'theme_cidery', type: 'theme', category: 'cider', boostPct: 0.20, name: 'The Cidery', cost: 25, desc: '+20% cider rate while this is your active background.' },
+  { id: 'theme_winery', type: 'theme', category: 'wine', boostPct: 0.15, name: 'The Winery', cost: 40, desc: '+15% wine rate while this is your active background.' },
+  { id: 'theme_distillery', type: 'theme', category: 'whiskey', boostPct: 0.10, name: 'The Distillery', cost: 65, desc: '+10% whiskey rate while this is your active background.' },
 ];
 const STORE_ITEM_BY_ID = {};
 STORE_ITEMS.forEach(i => { STORE_ITEM_BY_ID[i.id] = i; });
@@ -428,6 +441,9 @@ function effectiveTapCooldown(state) {
 function categoryEquipmentMultiplier(category, state) {
   return STORE_ITEMS.reduce((mult, item) => {
     if (item.type === 'categoryBoost' && item.category === category && isItemOwned(state, item.id)) {
+      return mult + item.boostPct;
+    }
+    if (item.type === 'theme' && item.category === category && isItemOwned(state, item.id) && state.store && state.store.background === item.id) {
       return mult + item.boostPct;
     }
     return mult;
@@ -987,7 +1003,7 @@ function Fermentary() {
       if (prev.prestigePoints < item.cost) { showToast('Not enough prestige points.', 'warn'); return prev; }
       const owned = Object.assign({}, prev.store.owned, { [itemId]: true });
       const store = Object.assign({}, prev.store, { owned });
-      if (item.type === 'background') store.background = itemId;
+      if (item.type === 'background' || item.type === 'theme') store.background = itemId;
       if (item.type === 'iconPack') store.iconPack = itemId;
       showToast(`${item.name} unlocked!`, 'good');
       return Object.assign({}, prev, { prestigePoints: prev.prestigePoints - item.cost, store, storeItemsBoughtThisRun: (prev.storeItemsBoughtThisRun || 0) + 1 });
@@ -999,7 +1015,7 @@ function Fermentary() {
     setState(prev => {
       if (!isItemOwned(prev, itemId)) return prev;
       const store = Object.assign({}, prev.store);
-      if (item.type === 'background') store.background = itemId;
+      if (item.type === 'background' || item.type === 'theme') store.background = itemId;
       if (item.type === 'iconPack') store.iconPack = itemId;
       return Object.assign({}, prev, { store });
     });
@@ -1357,6 +1373,23 @@ function GlowShelf(props) {
   );
 }
 
+const TOP_SHELF_LEVEL = 25;
+
+// A narrower shelf segment flanking the sign, for beverages that have
+// "graduated" to the top shelf by reaching a high proficiency level.
+function SideShelf(props) {
+  const { beverages: bevList, state } = props;
+  return h('div', { style: { flex: 1, position: 'relative', paddingBottom: 8, minWidth: 0, overflow: 'visible' } },
+    h('div', { style: { display: 'flex', alignItems: 'flex-end', justifyContent: 'center', flexWrap: 'wrap', gap: 2, minHeight: 20 } },
+      bevList.map(b => h(BottleShape, {
+        key: b.id, bevId: b.id, owned: true, color: CATEGORY_STYLES[b.category].accent,
+        name: `${b.name} — Lv.${state.beverages[b.id].level}`,
+      }))
+    ),
+    h('div', { style: { position: 'absolute', bottom: 0, left: '8%', right: '8%', height: 2, background: '#E8B94A', borderRadius: 1, boxShadow: '0 0 5px 1px rgba(232,185,74,0.8), 0 4px 10px 2px rgba(232,185,74,0.3)' } })
+  );
+}
+
 function BarDisplay(props) {
   const { state } = props;
   const ownedCount = Object.values(state.beverages).filter(b => b.level > 0).length;
@@ -1387,25 +1420,45 @@ function BarDisplay(props) {
     return () => clearTimeout(timer);
   }, [glassCount]);
 
-  return h('div', { id: 'bar-display', style: { margin: '0 16px 16px', background: 'linear-gradient(180deg, #33272A 0%, #201A1C 55%, #1B140D 100%)', border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
-    h('div', { style: { textAlign: 'center', marginBottom: 16 } },
-      h('span', {
-        style: {
-          display: 'inline-block', padding: '8px 22px', borderRadius: 6,
-          background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(224,169,62,0.1)',
-          boxShadow: '0 0 22px 3px rgba(224,169,62,0.16), inset 0 0 14px rgba(224,169,62,0.06)',
-          fontFamily: "'Pacifico', cursive", fontSize: 21, letterSpacing: 0.5,
-          color: '#FFF8E9',
-          WebkitTextStroke: '0.4px rgba(70,40,10,0.3)',
-          textShadow: '0 0 2px rgba(255,248,233,0.95), 0 0 6px rgba(255,205,110,0.9), 0 0 14px rgba(224,169,62,0.75), 0 0 28px rgba(224,169,62,0.5), 0 0 48px rgba(212,175,44,0.32)',
-          animation: 'neonFlicker 4.2s infinite',
-        },
-      }, 'Idle Brew')
+  // Beverages at Lv.25+ graduate to the flanking top shelves either side of
+  // the sign; everyone else stays on the main shelf below.
+  const topShelfBevs = BEVERAGES.filter(b => state.beverages[b.id] && state.beverages[b.id].level >= TOP_SHELF_LEVEL);
+  const topShelfIds = new Set(topShelfBevs.map(b => b.id));
+  const leftTop = topShelfBevs.filter((_, i) => i % 2 === 0);
+  const rightTop = topShelfBevs.filter((_, i) => i % 2 === 1);
+  const mainShelfBevs = BEVERAGES.filter(b => !topShelfIds.has(b.id));
+
+  // The bar's own backdrop reacts to an equipped Theme (not plain cosmetic
+  // backgrounds), so buying and switching themes visibly changes the room.
+  const equippedItem = STORE_ITEM_BY_ID[state.store.background];
+  const activeTheme = equippedItem && equippedItem.type === 'theme' ? equippedItem : null;
+  const barBg = activeTheme ? BACKGROUND_THEMES[state.store.background] : 'linear-gradient(180deg, #33272A 0%, #201A1C 55%, #1B140D 100%)';
+
+  return h('div', { id: 'bar-display', style: { margin: '0 16px 16px', background: barBg, border: '1px solid #3A2C1D', borderRadius: 10, padding: '16px 14px 12px', overflow: 'hidden' } },
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: 2, marginBottom: activeTheme ? 6 : 16 } },
+      h(SideShelf, { beverages: leftTop, state: state }),
+      h('div', { style: { flexShrink: 0, textAlign: 'center', padding: '0 4px' } },
+        h('span', {
+          style: {
+            display: 'inline-block', padding: '8px 16px', borderRadius: 6,
+            background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(224,169,62,0.1)',
+            boxShadow: '0 0 22px 3px rgba(224,169,62,0.16), inset 0 0 14px rgba(224,169,62,0.06)',
+            fontFamily: "'Pacifico', cursive", fontSize: 19, letterSpacing: 0.5, whiteSpace: 'nowrap',
+            color: '#FFF8E9',
+            WebkitTextStroke: '0.4px rgba(70,40,10,0.3)',
+            textShadow: '0 0 2px rgba(255,248,233,0.95), 0 0 6px rgba(255,205,110,0.9), 0 0 14px rgba(224,169,62,0.75), 0 0 28px rgba(224,169,62,0.5), 0 0 48px rgba(212,175,44,0.32)',
+            animation: 'neonFlicker 4.2s infinite',
+          },
+        }, 'Idle Brew')
+      ),
+      h(SideShelf, { beverages: rightTop, state: state })
     ),
 
-    // Top shelf: every beverage, in unlock order, as its own distinct bottle.
+    activeTheme && h('div', { style: { textAlign: 'center', fontSize: 9.5, color: CATEGORY_STYLES[activeTheme.category].accent, marginBottom: 10, fontWeight: 600 } }, `✨ ${activeTheme.name} active — ${activeTheme.desc}`),
+
+    // Main shelf: every beverage below Lv.25, in unlock order, as its own distinct bottle.
     h(GlowShelf, { minHeight: 20 },
-      BEVERAGES.map(b => {
+      mainShelfBevs.map(b => {
         const cur = state.beverages[b.id];
         const owned = cur && cur.level > 0;
         return h(BottleShape, { key: b.id, bevId: b.id, owned: owned, color: CATEGORY_STYLES[b.category].accent, name: b.name });
@@ -1765,6 +1818,7 @@ function BossCard(props) {
 function StoreView(props) {
   const { state, icons, onBuy, onEquip } = props;
   const groups = [
+    { type: 'theme', label: 'Themes', note: 'A background AND a category boost — but only one theme can be active at once. Switching backgrounds swaps which category benefits.' },
     { type: 'background', label: 'Bar backgrounds', note: 'Cosmetic — changes the backdrop everywhere.' },
     { type: 'iconPack', label: 'Icon packs', note: 'Cosmetic — reskins the ledger and action icons.' },
     { type: 'categoryBoost', label: 'Equipment', note: 'Permanent, one-time. Boosts one beverage category — low-end and high-end gear both stack.' },
@@ -1793,11 +1847,14 @@ function StoreItemCard(props) {
   const { item, state, onBuy, onEquip } = props;
   const owned = isItemOwned(state, item.id);
   const equipped = (item.type === 'background' && state.store.background === item.id) ||
+                    (item.type === 'theme' && state.store.background === item.id) ||
                     (item.type === 'iconPack' && state.store.iconPack === item.id);
   const affordable = state.prestigePoints >= item.cost;
 
   const preview = item.type === 'background'
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 } })
+    : item.type === 'theme'
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: BACKGROUND_THEMES[item.id], border: `1px solid ${CATEGORY_STYLES[item.category].accent}`, boxShadow: `inset 0 0 8px ${CATEGORY_STYLES[item.category].accent}55`, flexShrink: 0 } })
     : item.type === 'iconPack'
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, ICON_PACKS[item.id].cash)
     : item.type === 'categoryBoost'
