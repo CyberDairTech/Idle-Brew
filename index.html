@@ -201,7 +201,7 @@ const TUTORIAL_STEPS = [
   {
     targetId: 'ledger-debt',
     title: 'Debt never sleeps',
-    body: 'Your loan grows a little every second too. Use the Pay $50 and Pay all cash buttons just below this card to keep it in check before it outpaces you.',
+    body: 'Your loan grows a little every second too. Use the Pay buttons just below this card to keep it in check — more payment sizes unlock in the Store as you go.',
   },
   {
     targetId: 'beverages-section',
@@ -395,6 +395,15 @@ const STORE_ITEMS = [
 
   { id: 'equip_whiskey_1', type: 'categoryBoost', category: 'whiskey', boostPct: 0.08, name: 'Copper Pot Still', cost: 24, desc: 'The traditional way. +8% rate on all whiskeys.' },
   { id: 'equip_whiskey_2', type: 'categoryBoost', category: 'whiskey', boostPct: 0.20, name: 'Charred Oak Rickhouse', cost: 58, desc: 'A full aging warehouse. +20% rate on all whiskeys.' },
+
+  // Payment tiers: bigger, permanent Pay/Invest buttons so paying down debt
+  // (or investing afterward) doesn't mean choosing between a token $50 and
+  // dumping your entire balance. Every owned tier's button stays available
+  // alongside the smaller ones.
+  { id: 'pay_500', type: 'payTier', amount: 500, cost: 8, name: 'Cash Register', desc: 'Unlocks a $500 Pay/Invest button.' },
+  { id: 'pay_5000', type: 'payTier', amount: 5000, cost: 20, name: 'Bank Deposit Bag', desc: 'Unlocks a $5,000 Pay/Invest button.' },
+  { id: 'pay_50000', type: 'payTier', amount: 50000, cost: 45, name: 'Armored Truck Pickup', desc: 'Unlocks a $50,000 Pay/Invest button.' },
+  { id: 'pay_500000', type: 'payTier', amount: 500000, cost: 90, name: 'Wire Transfer Line', desc: 'Unlocks a $500,000 Pay/Invest button.' },
 ];
 const STORE_ITEM_BY_ID = {};
 STORE_ITEMS.forEach(i => { STORE_ITEM_BY_ID[i.id] = i; });
@@ -402,6 +411,10 @@ STORE_ITEMS.forEach(i => { STORE_ITEM_BY_ID[i.id] = i; });
 function isItemOwned(state, itemId) {
   const item = STORE_ITEM_BY_ID[itemId];
   return !!(item && (item.cost === 0 || (state.store && state.store.owned && state.store.owned[itemId])));
+}
+function unlockedPayTiers(state) {
+  const owned = STORE_ITEMS.filter(i => i.type === 'payTier' && isItemOwned(state, i.id)).map(i => i.amount);
+  return [50, ...owned].sort((a, b) => a - b);
 }
 function effectiveTapCooldown(state) {
   return isItemOwned(state, 'boost_taps') ? Math.round(TAP_COOLDOWN * 0.7) : TAP_COOLDOWN;
@@ -561,7 +574,20 @@ function fmtMoney(n) {
 function fmtNum(n) {
   return Math.round(n).toLocaleString();
 }
-function costLabel(n) { return n <= 0 ? 'Free' : fmtMoney(n); }
+// Once a value's full comma-formatted dollar string gets long enough, it
+// overflows the fixed-width cards it's shown in — this switches to a
+// short K/M/B/T suffix instead. Small numbers are unaffected.
+function fmtCompact(n) {
+  const neg = n < 0;
+  const abs = Math.abs(n);
+  let out;
+  if (abs >= 1e12) out = (abs / 1e12).toFixed(2) + 'T';
+  else if (abs >= 1e9) out = (abs / 1e9).toFixed(2) + 'B';
+  else if (abs >= 1e6) out = (abs / 1e6).toFixed(2) + 'M';
+  else return fmtMoney(n);
+  return (neg ? '-$' : '$') + out;
+}
+function costLabel(n) { return n <= 0 ? 'Free' : fmtCompact(n); }
 function rankOf(state, nodeId) { return state.prestigeUpgrades[nodeId] || 0; }
 function beverageNodesMaxed(bevId, state) {
   return rankOf(state, `${bevId}_rate`) >= NODE_MAX_RANK && rankOf(state, `${bevId}_cost`) >= NODE_MAX_RANK;
@@ -1078,12 +1104,12 @@ function Fermentary() {
       : h(React.Fragment, null,
 
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' } },
-      h(LedgerCard, { icon: icons.cash, label: 'Cash', value: fmtMoney(state.cash), color: '#E0A93E' }),
+      h(LedgerCard, { icon: icons.cash, label: 'Cash', value: fmtCompact(state.cash), color: '#E0A93E' }),
       debtCleared
-        ? h(LedgerCard, { id: 'ledger-debt', icon: '📥', label: 'Invested', value: fmtMoney(state.invested || 0), color: '#9CC28A' })
-        : h(LedgerCard, { id: 'ledger-debt', icon: icons.debt, label: 'Debt', value: fmtMoney(state.debt), color: '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
-      h(LedgerCard, { id: 'ledger-income', icon: icons.income, label: 'Income', value: `${fmtMoney(totalRate)}/sec`, color: '#9CC28A' }),
-      h(LedgerCard, { icon: icons.lifetime, label: 'Lifetime earned', value: fmtMoney(state.totalEarned), color: '#B49BD1' })
+        ? h(LedgerCard, { id: 'ledger-debt', icon: '📥', label: 'Invested', value: fmtCompact(state.invested || 0), color: '#9CC28A' })
+        : h(LedgerCard, { id: 'ledger-debt', icon: icons.debt, label: 'Debt', value: fmtCompact(state.debt), color: '#C15C5C', bleed: Math.min(1, state.debt / debtForRun(state.prestige)) }),
+      h(LedgerCard, { id: 'ledger-income', icon: icons.income, label: 'Income', value: `${fmtCompact(totalRate)}/sec`, color: '#9CC28A' }),
+      h(LedgerCard, { icon: icons.lifetime, label: 'Lifetime earned', value: fmtCompact(state.totalEarned), color: '#B49BD1' })
     ),
 
     h('button', {
@@ -1096,16 +1122,30 @@ function Fermentary() {
 
     h(TasksCard, { state: state }),
 
-    !debtCleared && h('div', { style: { padding: '0 16px 16px', display: 'flex', gap: 8 } },
-      h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => payDebt(Math.min(state.cash, 50)), style: payBtnStyle }, 'Pay $50'),
-      h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => payDebt(state.cash), style: Object.assign({}, payBtnStyle, { background: '#4A3A24', borderColor: '#6B5636' }) }, 'Pay all cash')
+    !debtCleared && h('div', { style: { padding: '0 16px 16px', display: 'flex', flexWrap: 'wrap', gap: 8 } },
+      unlockedPayTiers(state).map(amt => h(HoldableButton, {
+        key: amt, className: 'btn', disabled: state.cash <= 0,
+        onAction: () => payDebt(Math.min(state.cash, amt)),
+        style: Object.assign({}, payBtnStyle, { flex: '1 1 28%', minWidth: 92 }),
+      }, `Pay ${fmtCompact(amt)}`)),
+      h(HoldableButton, {
+        className: 'btn', disabled: state.cash <= 0, onAction: () => payDebt(state.cash),
+        style: Object.assign({}, payBtnStyle, { flex: '1 1 28%', minWidth: 92, background: '#4A3A24', borderColor: '#6B5636' }),
+      }, 'Pay all')
     ),
 
     debtCleared && h('div', { style: { padding: '0 16px 6px' } },
       h('div', { style: { fontSize: 10.5, color: '#8A7860', marginBottom: 8 } }, `Debt's clear — invest surplus cash instead. It keeps counting toward tier unlocks, and pays you ${fmtMoney(INVEST_RATE_PER_SEC * 100)}/sec back per $100 invested, forever.`),
-      h('div', { style: { display: 'flex', gap: 8 } },
-        h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => investCash(Math.min(state.cash, 50)), style: Object.assign({}, payBtnStyle, { background: '#2F3A2C', border: '1px solid #4E6247', color: '#9CC28A' }) }, 'Invest $50'),
-        h('button', { className: 'btn', disabled: state.cash <= 0, onClick: () => investCash(state.cash), style: Object.assign({}, payBtnStyle, { background: '#3A4A34', border: '1px solid #5E7C53', color: '#C4E0B5' }) }, 'Invest all cash')
+      h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+        unlockedPayTiers(state).map(amt => h(HoldableButton, {
+          key: amt, className: 'btn', disabled: state.cash <= 0,
+          onAction: () => investCash(Math.min(state.cash, amt)),
+          style: Object.assign({}, payBtnStyle, { flex: '1 1 28%', minWidth: 92, background: '#2F3A2C', border: '1px solid #4E6247', color: '#9CC28A' }),
+        }, `Invest ${fmtCompact(amt)}`)),
+        h(HoldableButton, {
+          className: 'btn', disabled: state.cash <= 0, onAction: () => investCash(state.cash),
+          style: Object.assign({}, payBtnStyle, { flex: '1 1 28%', minWidth: 92, background: '#3A4A34', border: '1px solid #5E7C53', color: '#C4E0B5' }),
+        }, 'Invest all')
       )
     ),
 
@@ -1161,6 +1201,24 @@ function Fermentary() {
   );
 }
 
+function HoldableButton(props) {
+  const { onAction, disabled, children, style, className } = props;
+  const timerRef = useRef(null);
+  const stop = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  const start = () => {
+    if (disabled || timerRef.current) return;
+    onAction();
+    timerRef.current = setInterval(onAction, 130);
+  };
+  useEffect(() => stop, []);
+  return h('button', {
+    className, disabled,
+    onMouseDown: start, onMouseUp: stop, onMouseLeave: stop,
+    onTouchStart: (e) => { e.preventDefault(); start(); }, onTouchEnd: stop, onTouchCancel: stop,
+    style,
+  }, children);
+}
+
 function SectionLabel(props) {
   return h('div', { id: props.id, style: { fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 600, color: '#B99A5B', marginBottom: 8, letterSpacing: 0.4, textTransform: 'uppercase' } }, props.text);
 }
@@ -1212,7 +1270,7 @@ function BeverageCard(props) {
   if (!debtUnlocked) {
     return h('div', { style: { background: '#241A12', border: '1px dashed #3A2C1D', borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#5A4A38' } },
       h('span', { style: { fontSize: 16 } }, icons.lock),
-      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `${bev.name} — pay down $${fmtNum(bev.unlockDebtPaid)} total to unlock`)
+      h('div', { style: { fontSize: 12, fontFamily: 'JetBrains Mono, monospace' } }, `${bev.name} — pay down ${fmtCompact(bev.unlockDebtPaid)} total to unlock`)
     );
   }
 
@@ -1238,8 +1296,8 @@ function BeverageCard(props) {
       h('div', null,
         h('div', { style: { fontSize: 14, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, bev.name),
         owned
-          ? h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Proficiency Lv.${bevState.level} · ${fmtMoney(rate)}/sec`)
-          : h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Not brewing yet · base ${fmtMoney(bev.baseRate)}/sec`)
+          ? h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Proficiency Lv.${bevState.level} · ${fmtCompact(rate)}/sec`)
+          : h('div', { style: { fontSize: 11, color: style.accentSoft, fontFamily: 'JetBrains Mono, monospace', marginTop: 2 } }, `Not brewing yet · base ${fmtCompact(bev.baseRate)}/sec`)
       ),
       owned && h('div', { style: { fontSize: 9.5, color: tapReady ? style.accent : '#5A4A38', display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 } },
         h('span', { style: { fontSize: 11 } }, icons.tap), ' ', tapReady ? 'tap for bonus' : 'cooling down'
@@ -1251,7 +1309,7 @@ function BeverageCard(props) {
             className: 'btn', disabled: cash < nextCost,
             onClick: (e) => { e.stopPropagation(); onUpgrade(bev.id); },
             style: { width: '100%', background: style.border, border: `1px solid ${style.accentSoft}`, borderRadius: 7, padding: '8px 0', color: style.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 },
-          }, h('span', { style: { fontSize: 13 } }, icons.upgrade), ` Improve proficiency — ${fmtMoney(nextCost)} → ${fmtMoney(nextRate)}/sec`)
+          }, h('span', { style: { fontSize: 13 } }, icons.upgrade), ` Improve proficiency — ${fmtCompact(nextCost)} → ${fmtCompact(nextRate)}/sec`)
         : h('button', {
             className: 'btn', disabled: cash < nextCost,
             onClick: (e) => { e.stopPropagation(); onUnlock(bev.id); },
@@ -1488,12 +1546,12 @@ function BossCard(props) {
       h('div', { style: { fontSize: 26, flexShrink: 0 } }, boss.icon),
       h('div', { style: { flex: 1, minWidth: 0 } },
         h('div', { style: { fontSize: 13.5, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, boss.name),
-        h('div', { style: { fontSize: 10.5, color: won ? '#F0D98C' : '#8A7860', marginTop: 1 } }, won ? `✓ ${boss.trophy} won` : `${boss.trophy} · earn ${fmtMoney(boss.target)} in 60s`)
+        h('div', { style: { fontSize: 10.5, color: won ? '#F0D98C' : '#8A7860', marginTop: 1 } }, won ? `✓ ${boss.trophy} won` : `${boss.trophy} · earn ${fmtCompact(boss.target)} in 60s`)
       )
     ),
     active && h('div', { style: { marginTop: 10 } },
       h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#C9BBA3', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' } },
-        h('span', null, `${fmtMoney(earned)} / ${fmtMoney(boss.target)}`),
+        h('span', null, `${fmtCompact(earned)} / ${fmtCompact(boss.target)}`),
         h('span', null, `${secondsLeft}s left`)
       ),
       h('div', { style: { height: 8, borderRadius: 4, background: '#1B140D', overflow: 'hidden' } },
@@ -1515,6 +1573,7 @@ function StoreView(props) {
     { type: 'iconPack', label: 'Icon packs', note: 'Cosmetic — reskins the ledger and action icons.' },
     { type: 'categoryBoost', label: 'Equipment', note: 'Permanent, one-time. Boosts one beverage category — low-end and high-end gear both stack.' },
     { type: 'boost', label: 'Boosts', note: 'Permanent, one-time. Never lost, even on prestige.' },
+    { type: 'payTier', label: 'Payment tiers', note: 'Permanent, one-time. Adds a bigger Pay/Invest button for faster debt paydown.' },
   ];
 
   return h('div', { style: { padding: '4px 16px 0' } },
@@ -1547,6 +1606,8 @@ function StoreItemCard(props) {
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, ICON_PACKS[item.id].cash)
     : item.type === 'categoryBoost'
     ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: `${CATEGORY_STYLES[item.category].accent}33`, border: `1px solid ${CATEGORY_STYLES[item.category].accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, '🔧')
+    : item.type === 'payTier'
+    ? h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#2F3A2C', border: '1px solid #4E6247', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, '💵')
     : h('div', { style: { width: 34, height: 34, borderRadius: 8, background: '#241A12', border: '1px solid #3A2C1D', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 } }, '⭐');
 
   return h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, background: '#2C2116', border: `1px solid ${equipped ? '#E0A93E' : '#3A2C1D'}`, borderRadius: 10, padding: 10 } },
@@ -1558,7 +1619,7 @@ function StoreItemCard(props) {
     equipped
       ? h('div', { style: { flexShrink: 0, fontSize: 10.5, color: '#E0A93E', fontWeight: 700, padding: '6px 10px' } }, 'Equipped')
       : owned
-      ? ((item.type === 'boost' || item.type === 'categoryBoost')
+      ? ((item.type === 'boost' || item.type === 'categoryBoost' || item.type === 'payTier')
           ? h('div', { style: { flexShrink: 0, fontSize: 10.5, color: '#9CC28A', fontWeight: 700, padding: '6px 10px' } }, 'Owned ✓')
           : h('button', { className: 'btn', onClick: () => onEquip(item.id), style: { flexShrink: 0, background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 6, padding: '6px 10px', color: '#E0A93E', fontSize: 11, fontWeight: 600, cursor: 'pointer' } }, 'Equip'))
       : h('button', {
