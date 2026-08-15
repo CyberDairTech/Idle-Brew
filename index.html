@@ -525,7 +525,12 @@ function earnRunTarget(lvl) { return Math.round(500 * Math.pow(1.6, lvl)); }
 function payRunTarget(lvl) { return Math.round(300 * Math.pow(1.5, lvl)); }
 function investRunTarget(lvl) { return Math.round(200 * Math.pow(1.6, lvl)); }
 function incomeRateTarget(lvl) { return Math.round(5 * Math.pow(1.8, lvl)); }
-function spendPrestigeTarget(lvl) { return Math.round(3 * Math.pow(1.5, lvl)); }
+// Linear, not exponential — prestige points are a bounded resource (the
+// whole Recipe Book only ever holds 4,544 points worth of nodes), unlike
+// cash which is genuinely unbounded. The old exponential formula exceeded
+// that hard ceiling by around prestige level 35, making the task
+// impossible to complete no matter how much a player had spent.
+function spendPrestigeTarget(lvl) { return Math.min(4000, Math.round(10 + lvl * 20)); }
 
 const TASK_POOL = [
   {
@@ -574,9 +579,9 @@ const TASK_POOL = [
     progress: (state) => Math.round(totalRateOf(state)),
   },
   {
-    id: 'spend_prestige', desc: (lvl) => `Spend ${spendPrestigeTarget(lvl)} prestige points in the Tree`, minLevel: 1,
+    id: 'spend_prestige', desc: (lvl) => `Have spent ${spendPrestigeTarget(lvl)} total prestige points in the Recipe Book`, minLevel: 1,
     target: spendPrestigeTarget,
-    progress: (state) => state.prestigeSpentThisRun || 0,
+    progress: (state) => state.prestigeSpent || 0,
   },
   {
     id: 'store_unlock', desc: () => 'Unlock an item in the Store', minLevel: 2,
@@ -1308,28 +1313,32 @@ function IdleBrew() {
     h('div', { style: { padding: '14px 16px 12px', borderBottom: '1px solid #3A2C1D' } },
       h('div', { id: 'nav-buttons', style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: 12 } },
         h('button', {
+          onClick: () => setView('game'), 'aria-label': 'Brewery (home)',
+          style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'game' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'game' ? '#6B5A9C' : '#5A4630'}`, color: view === 'game' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+        }, '🏠 Brewery'),
+        h('button', {
           id: 'nav-tree',
-          onClick: () => setView(v => v === 'tree' ? 'game' : 'tree'), 'aria-label': 'Recipe Book',
+          onClick: () => setView('tree'), 'aria-label': 'Recipe Book',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'tree' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'tree' ? '#6B5A9C' : '#5A4630'}`, color: view === 'tree' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-        }, view === 'tree' ? '← Brewery' : '📖 Recipe Book'),
+        }, '📖 Recipe Book'),
         h('button', {
-          onClick: () => setView(v => v === 'store' ? 'game' : 'store'), 'aria-label': 'Store',
+          onClick: () => setView('store'), 'aria-label': 'Store',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'store' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'store' ? '#6B5A9C' : '#5A4630'}`, color: view === 'store' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-        }, view === 'store' ? '← Brewery' : '🛍️ Store'),
+        }, '🛍️ Store'),
         h('button', {
-          onClick: () => setView(v => v === 'achievements' ? 'game' : 'achievements'), 'aria-label': 'Side Hustles',
+          onClick: () => setView('achievements'), 'aria-label': 'Side Hustles',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'achievements' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'achievements' ? '#6B5A9C' : '#5A4630'}`, color: view === 'achievements' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-        }, view === 'achievements' ? '← Brewery' : '📋 Side Hustles'),
+        }, '📋 Side Hustles'),
         h('button', {
-          onClick: () => setView(v => v === 'awards' ? 'game' : 'awards'), 'aria-label': 'Achievements',
+          onClick: () => setView('awards'), 'aria-label': 'Achievements',
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'awards' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'awards' ? '#6B5A9C' : '#5A4630'}`, color: view === 'awards' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
-        }, view === 'awards' ? '← Brewery' : '🏅 Achievements'),
+        }, '🏅 Achievements'),
         h('button', {
           onClick: openTutorial, 'aria-label': 'Show tutorial',
           style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
         }, '?'),
         h('button', {
-          onClick: () => setView(v => v === 'settings' ? 'game' : 'settings'), 'aria-label': 'Settings',
+          onClick: () => setView('settings'), 'aria-label': 'Settings',
           style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: view === 'settings' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'settings' ? '#6B5A9C' : '#5A4630'}`, color: view === 'settings' ? '#E5D9FF' : '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
         }, '⚙️')
       ),
@@ -1456,28 +1465,39 @@ function HoldableButton(props) {
   const { onAction, disabled, children, style, className } = props;
   const holdDelayRef = useRef(null);
   const intervalRef = useRef(null);
+  const sessionRef = useRef(0);
 
+  // Bumping the session invalidates any in-flight timeout/interval from a
+  // prior press, even if it wasn't cleared cleanly — so a fast double-tap
+  // or an overlapping touch+mouse ghost event can never leave a stray
+  // interval running into the next press.
   const stopAll = () => {
+    sessionRef.current += 1;
     if (holdDelayRef.current) { clearTimeout(holdDelayRef.current); holdDelayRef.current = null; }
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
   };
 
-  const start = () => {
+  const start = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (disabled || holdDelayRef.current || intervalRef.current) return;
+    const mySession = ++sessionRef.current;
     onAction(); // fires once immediately, so a quick tap still feels instant
     // Only start rapid-fire if still held after this — a normal tap
     // releases well before the threshold, so it never repeats.
     holdDelayRef.current = setTimeout(() => {
+      if (sessionRef.current !== mySession) return;
       holdDelayRef.current = null;
-      intervalRef.current = setInterval(onAction, 130);
+      intervalRef.current = setInterval(() => {
+        if (sessionRef.current !== mySession) { clearInterval(intervalRef.current); intervalRef.current = null; return; }
+        onAction();
+      }, 130);
     }, 350);
   };
 
   useEffect(() => stopAll, []);
   return h('button', {
     className, disabled,
-    onMouseDown: start, onMouseUp: stopAll, onMouseLeave: stopAll,
-    onTouchStart: (e) => { e.preventDefault(); start(); }, onTouchEnd: stopAll, onTouchCancel: stopAll,
+    onPointerDown: start, onPointerUp: stopAll, onPointerCancel: stopAll, onPointerLeave: stopAll,
     style: Object.assign({}, style, { WebkitUserSelect: 'none', WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation' }),
   }, children);
 }
