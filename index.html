@@ -1240,6 +1240,13 @@ function IdleBrew() {
     setTutorialStep(0);
     setTutorialOpen(true);
   }
+  function revisitTutorial() {
+    // The tutorial spotlights elements that only exist on the Brewery
+    // screen (ledger cards, the bar, etc.) — jump there first so every
+    // step can actually find its target, regardless of where this was clicked from.
+    setView('game');
+    openTutorial();
+  }
   function toggleAutoTap() {
     setState(prev => {
       if (!anyBeverageMaxed(prev)) return prev;
@@ -1334,8 +1341,8 @@ function IdleBrew() {
           style: { height: 28, borderRadius: 14, padding: '0 12px', background: view === 'awards' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'awards' ? '#6B5A9C' : '#5A4630'}`, color: view === 'awards' ? '#E5D9FF' : '#E0A93E', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
         }, '🏅 Achievements'),
         h('button', {
-          onClick: openTutorial, 'aria-label': 'Show tutorial',
-          style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: '#3A2C1D', border: '1px solid #5A4630', color: '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+          onClick: () => setView('help'), 'aria-label': 'Help',
+          style: { flexShrink: 0, width: 28, height: 28, borderRadius: '50%', background: view === 'help' ? '#4A3D6B' : '#3A2C1D', border: `1px solid ${view === 'help' ? '#6B5A9C' : '#5A4630'}`, color: view === 'help' ? '#E5D9FF' : '#E0A93E', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
         }, '?'),
         h('button', {
           onClick: () => setView('settings'), 'aria-label': 'Settings',
@@ -1360,6 +1367,8 @@ function IdleBrew() {
       ? h(AwardsPage, { state: state })
       : view === 'settings'
       ? h(SettingsView, { confirmingReset: confirmingReset, onConfirmReset: () => setConfirmingReset(true), onCancelReset: () => setConfirmingReset(false), onReset: resetProgress })
+      : view === 'help'
+      ? h(HelpView, { onRevisitTutorial: revisitTutorial })
       : h(React.Fragment, null,
 
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '14px 16px' } },
@@ -2037,6 +2046,60 @@ const UPCOMING = [
   'Export / import a save code to move progress between devices',
   'Prestige Tree nodes for the Equipment boosts',
 ];
+
+function HelpSection(props) {
+  return h('div', { style: { marginBottom: 18 } },
+    h('div', { style: { fontSize: 12.5, fontWeight: 700, color: '#E0A93E', fontFamily: 'Fraunces, serif', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 } },
+      h('span', null, props.icon), h('span', null, props.title)
+    ),
+    h('div', { style: { fontSize: 11.5, color: '#C9BBA3', lineHeight: 1.6 } }, props.children)
+  );
+}
+
+function HelpView(props) {
+  const { onRevisitTutorial } = props;
+  return h('div', { style: { padding: '4px 16px 16px' } },
+    h('div', { style: { margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '10px 14px' } },
+      h('div', { style: { fontSize: 12, color: '#C9B8E8', fontWeight: 600, marginBottom: 8 } }, '❓ Help & How to Play'),
+      h('button', {
+        className: 'btn', onClick: onRevisitTutorial,
+        style: { width: '100%', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '10px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+      }, '🔄 Revisit Tutorial')
+    ),
+
+    h(HelpSection, { icon: '🍺', title: 'Beverages' },
+      "Unlock a beverage with cash, then spend more cash to raise its Proficiency level — that's what actually grows how much it earns per second. Once you own a beverage, tapping it gives an instant cash bonus on top of whatever it earns passively, worth more than just waiting. Beverages that reach Proficiency Lv.25 graduate to the shelves flanking the neon sign as a visible flex."
+    ),
+
+    h(HelpSection, { icon: '💰', title: 'Debt & Investing' },
+      "You start in debt, and it grows by a small flat amount every second — flat, not compounding, so leaving the game running never produces an unreadable number. Pay it down with the Pay buttons on the Brewery screen; more payment sizes unlock in the Store. Once debt hits zero, those buttons switch to Invest instead — investing pays you back a steady rate forever and still counts toward Store unlock thresholds."
+    ),
+
+    h(HelpSection, { icon: '📖', title: 'Prestige & the Recipe Book' },
+      "Once debt is cleared, you can prestige: it resets your beverages, cash, and debt for a new generation (with a bigger starting loan), but grants permanent prestige points and keeps everything you've bought. Spend those points in the Recipe Book — permanent rate and cost upgrades for every beverage, organized into tiers that unlock as you invest more."
+    ),
+
+    h(HelpSection, { icon: '🍸', title: 'The Bar' },
+      "A living display of your progress: every beverage you've unlocked appears as its own bottle on the shelf, glasses wander down to the counter now and then to stand in for customers, and any Brew Off trophies you've won hang above in their own display cases. Purely cosmetic, but it reacts to what you actually own."
+    ),
+
+    h(HelpSection, { icon: '🛍️', title: 'The Store' },
+      "Spend prestige points on cosmetics and permanent boosts. Themes are special: each one is a background AND a category rate boost in one, but only whichever Theme is currently equipped has its boost active — switching Themes trades which category benefits. Equipment gives a permanent stacking boost to one category. Payment Tiers add bigger Pay/Invest buttons. Backgrounds and Icon Packs are purely cosmetic."
+    ),
+
+    h(HelpSection, { icon: '📋', title: 'Side Hustles & Brew Off' },
+      "Side Hustles are three small goals re-rolled every run — complete one for an immediate prestige point bonus, no need to wait for your next prestige. Brew Off bosses are timed challenges: once you hit their prestige requirement, you can challenge them to earn a target amount of cash within 60 seconds for a permanent trophy."
+    ),
+
+    h(HelpSection, { icon: '🏅', title: 'Achievements' },
+      "Fifty permanent, one-time unlocks spanning wealth, prestige level, your beverage collection, proficiency, the Store, the Recipe Book, and more. Once earned, they're never lost — even across a prestige reset."
+    ),
+
+    h(HelpSection, { icon: '⚙️', title: 'Settings' },
+      "The change log tracks everything that's been added to the game over time, and the reset button wipes all progress for a clean slate — that one's permanent, so use it deliberately."
+    )
+  );
+}
 
 function SettingsView(props) {
   const { confirmingReset, onConfirmReset, onCancelReset, onReset } = props;
