@@ -156,6 +156,11 @@ const storage = {
 const SAVE_KEY = 'idlebrew-save-v3';
 const LEGACY_SAVE_KEY = 'fermentary-save-v3'; // pre-rename key, read once for migration only
 
+// TODO: replace with your real GitHub Pages URL once feedback.html is
+// hosted (see the setup steps that came with this file). Until then, the
+// Feedback button in Settings will 404.
+const FEEDBACK_URL = 'https://cyberdairtech.github.io/Idle-Brew/feedback.html';
+
 // Each beverage earns cash every second on its own. "Proficiency" is a level
 // you buy up: rate = baseRate * level, so cost grows exponentially while
 // output grows linearly. Prestige upgrades apply permanent multipliers on
@@ -2104,6 +2109,15 @@ function HelpView(props) {
 function SettingsView(props) {
   const { confirmingReset, onConfirmReset, onCancelReset, onReset } = props;
   return h('div', { style: { padding: '4px 16px 0' } },
+
+    h('div', { style: { margin: '10px 0 18px', background: '#2A2233', border: '1px solid #4A3D5C', borderRadius: 10, padding: '12px 14px' } },
+      h('div', { style: { fontSize: 12.5, color: '#C9B8E8', fontWeight: 700, marginBottom: 4 } }, '💬 Send feedback'),
+      h('div', { style: { fontSize: 10.5, color: '#8A7CA0', marginBottom: 10, lineHeight: 1.5 } }, 'Found a bug? Have an idea? Opens a short form in your browser — no account needed.'),
+      h('a', {
+        href: FEEDBACK_URL, target: '_blank', rel: 'noopener noreferrer',
+        style: { display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', textDecoration: 'none', background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 8, padding: '9px 0', color: '#E5D9FF', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+      }, 'Give Feedback ↗')
+    ),
 
     h('div', { style: { margin: '10px 0 18px', background: '#3A1F1F', border: '1px solid #6B3A3A', borderRadius: 10, padding: '12px 14px' } },
       h('div', { style: { fontSize: 12.5, color: '#E8B4B4', fontWeight: 700, marginBottom: 4 } }, '⚠️ Reset progress'),
