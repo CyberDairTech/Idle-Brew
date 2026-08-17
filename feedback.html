@@ -39,10 +39,25 @@
   [data-fs-success] p { color: #A6957A; font-size: 13px; line-height: 1.6; margin: 0; }
 
   #formError { background: #3A1F1F; border: 1px solid #6B3A3A; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #E8B4B4; margin-top: 16px; }
+
+  .return-link {
+    display: inline-flex; align-items: center; gap: 5px; background: none; border: none;
+    color: #8A7860; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+    cursor: pointer; padding: 0; margin-bottom: 18px;
+  }
+  .return-link:hover { color: #C9BBA3; }
+  .return-btn {
+    margin-top: 18px; width: 100%; background: none; border: 1px solid #5A4630; border-radius: 8px;
+    padding: 11px 0; color: #E0A93E; font-size: 13px; font-weight: 700; cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .return-btn:active { transform: scale(0.98); }
 </style>
 </head>
 <body>
 <div class="wrap">
+
+  <button class="return-link" onclick="returnToGame()">← Back to game</button>
 
   <h1>🍺 Feedback</h1>
   <p class="sub">Found a bug, have an idea, or just want to say something about Idle Brew? This goes straight to the developer — no account needed.</p>
@@ -50,7 +65,8 @@
   <div data-fs-success>
     <div class="success-icon">✅</div>
     <h2>Thanks!</h2>
-    <p>Your feedback was sent. You can close this tab and get back to brewing.</p>
+    <p>Your feedback was sent.</p>
+    <button class="return-btn" onclick="returnToGame()" id="returnBtnSuccess">🍺 Return to Game</button>
   </div>
 
   <div id="formError" data-fs-error>Something went wrong sending that — please try again in a moment.</div>
@@ -78,6 +94,24 @@
 
 </div>
 
+<script>
+  // Since this page is opened from the game in its own tab, "returning to
+  // the game" means closing this tab so the game tab underneath is visible
+  // again. Browsers only allow script-closed tabs reliably when they were
+  // opened by script/a target="_blank" link — if that's blocked, fall back
+  // to telling the user to close it themselves rather than looking broken.
+  function returnToGame() {
+    window.close();
+    setTimeout(() => {
+      document.querySelectorAll('.return-link, .return-btn').forEach(btn => {
+        btn.textContent = btn.classList.contains('return-btn') ? '🍺 Close this tab to return' : '← Close this tab to return';
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.cursor = 'default';
+      });
+    }, 300);
+  }
+</script>
 <script>
   // Formspree AJAX integration — form ID xdenwavd. This intercepts the
   // submit, so the page never leaves this tab; if the CDN script below
