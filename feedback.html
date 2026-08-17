@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Idle Brew — Feedback</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Inter:wght@400;500;600;700&display=swap" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: linear-gradient(180deg, #241A12 0%, #150F09 100%); min-height: 100vh; font-family: 'Inter', sans-serif; color: #E8DCC4; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 32px 20px 60px; }
+  h1 { font-family: 'Fraunces', serif; font-size: 24px; color: #E0A93E; margin: 0 0 6px; }
+  .sub { font-size: 13px; color: #A6957A; margin: 0 0 22px; line-height: 1.5; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #C9BBA3; margin: 18px 0 6px; }
+  select, textarea, input[type="email"] {
+    width: 100%; background: #2C2116; border: 1px solid #3A2C1D; border-radius: 8px;
+    padding: 10px 12px; color: #E8DCC4; font-family: 'Inter', sans-serif; font-size: 14px;
+  }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: #E0A93E; }
+  textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+  [aria-invalid="true"] { border-color: #C15C5C !important; }
+  .hint { font-size: 10.5px; color: #6B5D48; margin-top: 5px; }
+  .field-error { display: block; font-size: 11px; color: #E8B4B4; margin-top: 5px; min-height: 0; }
+  button[data-fs-submit-btn] {
+    margin-top: 26px; width: 100%; background: #E0A93E; border: none; border-radius: 8px;
+    padding: 13px 0; color: #241A12; font-size: 14px; font-weight: 700; cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  button[data-fs-submit-btn]:disabled { opacity: 0.6; cursor: default; }
+  button[data-fs-submit-btn]:active:not(:disabled) { transform: scale(0.98); }
+
+  /* Content styling only — visibility of these two blocks is managed by
+     the @formspree/ajax library itself (data-fs-success / data-fs-error),
+     not by this stylesheet, since its exact show/hide mechanism isn't
+     something we can see from outside the library. */
+  [data-fs-success] { text-align: center; padding: 30px 10px; }
+  .success-icon { font-size: 40px; margin-bottom: 12px; }
+  [data-fs-success] h2 { font-family: 'Fraunces', serif; color: #E0A93E; font-size: 20px; margin: 0 0 8px; }
+  [data-fs-success] p { color: #A6957A; font-size: 13px; line-height: 1.6; margin: 0; }
+
+  #formError { background: #3A1F1F; border: 1px solid #6B3A3A; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #E8B4B4; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🍺 Feedback</h1>
+  <p class="sub">Found a bug, have an idea, or just want to say something about Idle Brew? This goes straight to the developer — no account needed.</p>
+
+  <div data-fs-success>
+    <div class="success-icon">✅</div>
+    <h2>Thanks!</h2>
+    <p>Your feedback was sent. You can close this tab and get back to brewing.</p>
+  </div>
+
+  <div id="formError" data-fs-error>Something went wrong sending that — please try again in a moment.</div>
+
+  <form id="my-form" action="https://formspree.io/f/xdenwavd" method="POST">
+    <label for="type">Type</label>
+    <select id="type" name="type" data-fs-field required>
+      <option value="Bug report">Bug report</option>
+      <option value="Suggestion" selected>Suggestion / idea</option>
+      <option value="General feedback">General feedback</option>
+    </select>
+    <span data-fs-error="type" class="field-error"></span>
+
+    <label for="message">Your feedback</label>
+    <textarea id="message" name="message" data-fs-field required placeholder="What's on your mind?"></textarea>
+    <span data-fs-error="message" class="field-error"></span>
+
+    <label for="email">Email <span style="font-weight:400;color:#6B5D48;">(optional, only if you want a reply)</span></label>
+    <input type="email" id="email" name="email" data-fs-field placeholder="you@example.com" />
+    <span data-fs-error="email" class="field-error"></span>
+    <div class="hint">Left blank, your feedback is completely anonymous.</div>
+
+    <button type="submit" data-fs-submit-btn>Send Feedback</button>
+  </form>
+
+</div>
+
+<script>
+  // Formspree AJAX integration — form ID xdenwavd. This intercepts the
+  // submit, so the page never leaves this tab; if the CDN script below
+  // fails to load for any reason, the form's plain action/method attributes
+  // above still work as a fallback (redirects to Formspree's own page).
+  window.formspree = window.formspree || function () { (formspree.q = formspree.q || []).push(arguments); };
+  formspree('initForm', { formElement: '#my-form', formId: 'xdenwavd' });
+</script>
+<script src="https://unpkg.com/@formspree/ajax@1" defer></script>
+</body>
+</html>
