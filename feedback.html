@@ -29,11 +29,13 @@
   button[data-fs-submit-btn]:disabled { opacity: 0.6; cursor: default; }
   button[data-fs-submit-btn]:active:not(:disabled) { transform: scale(0.98); }
 
-  /* Content styling only — visibility of these two blocks is managed by
-     the @formspree/ajax library itself (data-fs-success / data-fs-error),
-     not by this stylesheet, since its exact show/hide mechanism isn't
-     something we can see from outside the library. */
-  [data-fs-success] { text-align: center; padding: 30px 10px; }
+  /* Content styling for these two blocks; hidden by default as a safety
+     net — if @formspree/ajax reveals them via an inline style, that will
+     still override this rule correctly, but this way they're never left
+     incorrectly visible before any submission if it uses some other
+     mechanism we can't see from outside the library. */
+  [data-fs-success] { display: none; text-align: center; padding: 30px 10px; }
+  [data-fs-error] { display: none; }
   .success-icon { font-size: 40px; margin-bottom: 12px; }
   [data-fs-success] h2 { font-family: 'Fraunces', serif; color: #E0A93E; font-size: 20px; margin: 0 0 8px; }
   [data-fs-success] p { color: #A6957A; font-size: 13px; line-height: 1.6; margin: 0; }
@@ -41,11 +43,11 @@
   #formError { background: #3A1F1F; border: 1px solid #6B3A3A; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #E8B4B4; margin-top: 16px; }
 
   .return-link {
-    display: inline-flex; align-items: center; gap: 5px; background: none; border: none;
-    color: #8A7860; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
-    cursor: pointer; padding: 0; margin-bottom: 18px;
+    display: inline-flex; align-items: center; gap: 5px; background: #2C2116; border: 1px solid #3A2C1D; border-radius: 20px;
+    color: #E0A93E; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700;
+    cursor: pointer; padding: 7px 14px; margin-bottom: 20px;
   }
-  .return-link:hover { color: #C9BBA3; }
+  .return-link:active { transform: scale(0.97); }
   .return-btn {
     margin-top: 18px; width: 100%; background: none; border: 1px solid #5A4630; border-radius: 8px;
     padding: 11px 0; color: #E0A93E; font-size: 13px; font-weight: 700; cursor: pointer;
