@@ -46,12 +46,16 @@ jobs:
         working-directory: android
         run: |
           set +e
-          ./gradlew assembleDebug --no-daemon > build.log 2>&1
+          ./gradlew assembleDebug --no-daemon --stacktrace > build.log 2>&1
           code=$?
-          tail -n 100 build.log
+          tail -n 150 build.log
           if [ $code -ne 0 ]; then
-            tail -n 40 build.log | while IFS= read -r line; do
-              esc=$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')
+            {
+              grep -n -iE "error:|error :|FAILURE:|What went wrong|Execution failed|Caused by:|AAPT" build.log | head -n 60
+              echo "---last 20 lines---"
+              tail -n 20 build.log
+            } | while IFS= read -r line; do
+              esc=$(printf '%s' "$line" | cut -c1-400 | sed 's/%/%25/g; s/\r/%0D/g')
               echo "::error::$esc"
             done
           fi
