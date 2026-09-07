@@ -529,12 +529,17 @@ function earnRunTarget(lvl) { return Math.round(500 * Math.pow(1.6, lvl)); }
 function payRunTarget(lvl) { return Math.round(300 * Math.pow(1.5, lvl)); }
 function investRunTarget(lvl) { return Math.round(200 * Math.pow(1.6, lvl)); }
 function incomeRateTarget(lvl) { return Math.round(5 * Math.pow(1.8, lvl)); }
-// Linear, not exponential — prestige points are a bounded resource (the
-// whole Recipe Book only ever holds 4,544 points worth of nodes), unlike
-// cash which is genuinely unbounded. The old exponential formula exceeded
-// that hard ceiling by around prestige level 35, making the task
-// impossible to complete no matter how much a player had spent.
-function spendPrestigeTarget(lvl) { return Math.min(4000, Math.round(10 + lvl * 20)); }
+// Scaled directly off pointsForPrestige's own curve (60% of total prestige
+// points a player has ever been able to earn by this level), not an
+// independent formula — the previous version (10 + lvl*20) grew far faster
+// than points are actually earned: by prestige 2 it demanded having spent
+// 50 points total, when the real economy has only handed out ~3 by then.
+// This version stays achievable at every level, and (like the old one)
+// caps out shy of the Recipe Book's total cost so it's never a hard wall.
+function spendPrestigeTarget(lvl) {
+  const cumulativeEarnEstimate = lvl * PRESTIGE_POINTS_BASE + PRESTIGE_POINTS_PER_LEVEL * lvl * (lvl - 1) / 2;
+  return Math.max(3, Math.min(2500, Math.round(cumulativeEarnEstimate * 0.6)));
+}
 
 const TASK_POOL = [
   {
