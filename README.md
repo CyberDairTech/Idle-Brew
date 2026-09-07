@@ -2,21 +2,29 @@
 
 An idle/incremental brewery game. Play it at **https://cyberdairtech.github.io/Idle-Brew/**.
 
-- `index.html` — the game (single-file, also mirrored to the `gh-pages` branch for GitHub Pages)
+- `index.html` — the game (single-file, also mirrored to the `gh-pages` branch for GitHub Pages) — **edit game logic/content here only**
 - `feedback.html` — in-game feedback form
-- `www/` — the same game, used as the web asset bundle for the Android app
+- `www/index.html` — **generated, not committed.** The Android-only build of the game: `index.html` plus vendored React/fonts (so the app works offline) and native-shell hooks (back button, status bar, haptics). Produced by `npm run build:android` (see `scripts/build-android-www.js`)
+- `vendor/` — React/ReactDOM and the Google Fonts used by the game, downloaded once and committed so Android builds don't depend on CDN availability. Only needs regenerating if you change which fonts the game uses (`node scripts/vendor-fonts.js`, after re-fetching `vendor/fonts/google-fonts.css`)
 - `android/` — the Capacitor-generated native Android project
 - `.github/workflows/android-build.yml` — builds the Android app in CI on every push
 
 ## Updating the game
 
-Edit `index.html` **and** copy it to `www/index.html` (the Android app bundles whatever is in `www/`), then commit both. If you only touch `index.html`, the website updates but the Android app won't pick up the change until `www/index.html` is updated too.
+Edit `index.html` only, then commit it. `www/index.html` is a build artifact (gitignored) — CI regenerates it automatically before every Android build, so you never hand-edit or commit it.
 
 Also push the same `index.html` to the `gh-pages` branch to update the live site at cyberdairtech.github.io — `main` doesn't drive Pages here, `gh-pages` does.
 
 ## Android app
 
-This project uses [Capacitor](https://capacitorjs.com/) to wrap the game in a native Android WebView shell, with app id `com.cyberdairtech.idlebrew`.
+This project uses [Capacitor](https://capacitorjs.com/) to wrap the game in a native Android WebView shell, with app id `com.cyberdairtech.idlebrew`. A few things make it feel like more than "a website in a box":
+
+- **Works offline** — React and the game's fonts are vendored and inlined into `www/index.html` at build time, instead of loading from a CDN on first launch.
+- **Back button** navigates the game's own panels (Store, Recipe Book, etc.) before exiting the app, instead of the default WebView behavior.
+- **Status bar** is themed to match the game's dark brew palette.
+- **Haptic tap** feedback on the "tap for bonus" interaction.
+
+All of this native-only behavior lives in `scripts/build-android-www.js`, which patches it into a copy of `index.html` — the game file itself stays a clean, dependency-free single page.
 
 ### Automatic builds (no local setup needed)
 
@@ -31,7 +39,7 @@ Requires Node 22+, JDK 21, and Android Studio (for the SDK):
 
 ```bash
 npm install
-npx cap sync android
+npm run sync:android   # builds www/index.html, then runs `cap sync android`
 npx cap open android   # opens the project in Android Studio
 ```
 

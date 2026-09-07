@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build the Android web bundle (vendors React/fonts, adds native hooks)
+        run: npm run build:android
+
       - name: Sync Capacitor web assets into Android project
         run: npx cap sync android
 

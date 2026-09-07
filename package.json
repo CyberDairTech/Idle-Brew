@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build:android": "node scripts/build-android-www.js",
+    "sync:android": "npm run build:android && npx cap sync android",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -20,7 +22,10 @@
   "homepage": "https://github.com/CyberDairTech/Idle-Brew#readme",
   "dependencies": {
     "@capacitor/android": "^8.5.1",
-    "@capacitor/core": "^8.5.1"
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

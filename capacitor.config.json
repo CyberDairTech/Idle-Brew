@@ -1,5 +1,12 @@
 {
   "appId": "com.cyberdairtech.idlebrew",
   "appName": "Idle Brew",
-  "webDir": "www"
+  "webDir": "www",
+  "backgroundColor": "#241A12",
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#241A12"
+    }
+  }
 }
