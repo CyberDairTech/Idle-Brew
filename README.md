@@ -27,7 +27,7 @@ Every push to `main` triggers `.github/workflows/android-build.yml`, which build
 
 ### Building locally (optional)
 
-Requires Node 18+, JDK 17, and Android Studio (for the SDK):
+Requires Node 22+, JDK 21, and Android Studio (for the SDK):
 
 ```bash
 npm install
