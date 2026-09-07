@@ -1,0 +1,12 @@
+node_modules/
+npm-debug.log*
+
+# Keystores / signing material - never commit these
+*.jks
+*.keystore
+android/keystore.jks
+android/*.properties
+!android/gradle.properties
+
+# Local scratch
+icon-source.png
