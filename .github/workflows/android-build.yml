@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # `if:` conditions can't reference `secrets` directly, so mirror it into env first.
+      HAS_SIGNING: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,11 +49,11 @@ jobs:
       # Once you add signing secrets (see README's "Play Store release" section),
       # this also produces a signed .aab ready to upload to Google Play.
       - name: Decode signing keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: env.HAS_SIGNING == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
       - name: Build signed release AAB
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: env.HAS_SIGNING == 'true'
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -59,7 +62,7 @@ jobs:
         run: ./gradlew bundleRelease --no-daemon
 
       - name: Upload release AAB
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: env.HAS_SIGNING == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: idle-brew-release-aab
