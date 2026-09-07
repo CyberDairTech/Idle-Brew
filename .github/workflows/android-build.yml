@@ -30,7 +30,15 @@ jobs:
         run: npm ci
 
       - name: Sync Capacitor web assets into Android project
-        run: npx cap sync android
+        run: |
+          set +e
+          npx cap sync android > sync.log 2>&1
+          code=$?
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat sync.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat sync.log
+          exit $code
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
