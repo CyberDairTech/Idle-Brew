@@ -34,10 +34,13 @@ jobs:
           set +e
           npx cap sync android > sync.log 2>&1
           code=$?
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat sync.log >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat sync.log
+          if [ $code -ne 0 ]; then
+            while IFS= read -r line; do
+              esc=$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error::$esc"
+            done < sync.log
+          fi
           exit $code
 
       - name: Make gradlew executable
