@@ -26,6 +26,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform/build-tools for this project
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Install dependencies
         run: npm ci
 
@@ -38,7 +44,18 @@ jobs:
       # Every push: build an unsigned debug APK you can sideload for testing.
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          set +e
+          ./gradlew assembleDebug --no-daemon > build.log 2>&1
+          code=$?
+          tail -n 100 build.log
+          if [ $code -ne 0 ]; then
+            tail -n 40 build.log | while IFS= read -r line; do
+              esc=$(printf '%s' "$line" | sed 's/%/%25/g; s/\r/%0D/g')
+              echo "::error::$esc"
+            done
+          fi
+          exit $code
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
