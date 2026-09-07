@@ -141,5 +141,6 @@ out = replaceOnce(out, navAnchor, navBlock, 'stateRef.current = state; (for back
 const endAnchor = '} // end runIdleBrew\n</script>\n</body>';
 out = replaceOnce(out, endAnchor, `${endAnchor.replace('</body>', '')}<script>runIdleBrew();</script>\n</body>`, 'end of runIdleBrew script (for the call site)');
 
+fs.mkdirSync(path.join(root, 'www'), { recursive: true });
 fs.writeFileSync(path.join(root, 'www', 'index.html'), out);
 console.log(`wrote www/index.html (${(out.length / 1024).toFixed(0)} KB)`);
