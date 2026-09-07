@@ -459,7 +459,11 @@ const STORE_ITEMS = [
   { id: 'icons_lab', type: 'iconPack', name: 'Lab & Gauge', cost: 10, desc: 'Alembics, thermometers, and wrenches.' },
 
   { id: 'boost_taps', type: 'boost', name: 'Quick Hands', cost: 20, desc: '-30% tap cooldown, permanently, on every beverage.' },
-  { id: 'boost_double', type: 'boost', name: 'Double Production', cost: 50, desc: '2× rate on every beverage you own, forever. Stacks with everything.' },
+  // Real-money purchase (Google Play Billing on the Android app; see
+  // window.IdleBrewIAP and README's "Real-money purchase" section) - the
+  // only paid item in the store. `iapProductId` must match the in-app
+  // product id created in Play Console.
+  { id: 'boost_double', type: 'boost', name: 'Double Production', premium: true, iapProductId: 'double_production', desc: '2× rate on every beverage you own, forever. Stacks with everything.' },
 
   { id: 'equip_beer_1', type: 'categoryBoost', category: 'beer', boostPct: 0.08, name: 'Plastic Fermenter Bucket', cost: 10, desc: 'Homebrew-shop basic. +8% rate on all beers.' },
   { id: 'equip_beer_2', type: 'categoryBoost', category: 'beer', boostPct: 0.20, name: 'Stainless Conical Fermenter', cost: 30, desc: 'Temperature-controlled, professional-grade. +20% rate on all beers.' },
@@ -884,6 +888,9 @@ function IdleBrew() {
   const [view, setView] = useState('game');
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [welcomeBack, setWelcomeBack] = useState(null);
+  // Real-money item prices, keyed by STORE_ITEMS id. Only ever populated on
+  // the Android app (see window.IdleBrewIAP) - stays empty on the web version.
+  const [iapPrices, setIapPrices] = useState({});
   const toastTimer = useRef(null);
   const stateRef = useRef(null);
   stateRef.current = state;
@@ -1220,6 +1227,17 @@ function IdleBrew() {
     });
   }
 
+  // Real-money items never touch prestigePoints - window.IdleBrewIAP (wired
+  // up by the Android app only) drives the actual purchase, then grants
+  // ownership the same way buyStoreItem does on success.
+  function buyPremiumItem(itemId) {
+    if (window.IdleBrewIAP && typeof window.IdleBrewIAP.purchase === 'function') {
+      window.IdleBrewIAP.purchase(itemId);
+    } else {
+      showToast('This is a real-money purchase, only available in the Android app.', 'warn');
+    }
+  }
+
   function equipStoreItem(itemId) {
     const item = STORE_ITEM_BY_ID[itemId];
     setState(prev => {
@@ -1358,7 +1376,7 @@ function IdleBrew() {
     ),
 
     view === 'store'
-      ? h(StoreView, { state: state, icons: icons, onBuy: buyStoreItem, onEquip: equipStoreItem })
+      ? h(StoreView, { state: state, icons: icons, onBuy: buyStoreItem, onEquip: equipStoreItem, onBuyPremium: buyPremiumItem, iapPrices: iapPrices })
       : view === 'tree'
       ? h(PrestigeTreeView, { state: state, icons: icons, onBuy: buyPrestigeNode, onToggleAutoTap: toggleAutoTap })
       : view === 'achievements'
@@ -2239,7 +2257,7 @@ function BossCard(props) {
 }
 
 function StoreView(props) {
-  const { state, icons, onBuy, onEquip } = props;
+  const { state, icons, onBuy, onEquip, onBuyPremium, iapPrices } = props;
   const groups = [
     { type: 'theme', label: 'Themes', note: 'A background AND a category boost — but only one theme can be active at once. Switching backgrounds swaps which category benefits.' },
     { type: 'background', label: 'Bar backgrounds', note: 'Cosmetic — changes the backdrop everywhere.' },
@@ -2259,7 +2277,7 @@ function StoreView(props) {
         h(SectionLabel, { text: group.label }),
         h('div', { style: { fontSize: 11, color: '#8A7860', marginTop: -4, marginBottom: 10 } }, group.note),
         h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-          items.map(item => h(StoreItemCard, { key: item.id, item: item, state: state, onBuy: onBuy, onEquip: onEquip }))
+          items.map(item => h(StoreItemCard, { key: item.id, item: item, state: state, onBuy: onBuy, onEquip: onEquip, onBuyPremium: onBuyPremium, iapPrices: iapPrices }))
         )
       );
     })
@@ -2267,7 +2285,7 @@ function StoreView(props) {
 }
 
 function StoreItemCard(props) {
-  const { item, state, onBuy, onEquip } = props;
+  const { item, state, onBuy, onEquip, onBuyPremium, iapPrices } = props;
   const owned = isItemOwned(state, item.id);
   const equipped = (item.type === 'background' && state.store.background === item.id) ||
                     (item.type === 'theme' && state.store.background === item.id) ||
@@ -2291,7 +2309,10 @@ function StoreItemCard(props) {
   return h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, background: '#2C2116', border: `1px solid ${equipped ? '#E0A93E' : '#3A2C1D'}`, borderRadius: 10, padding: 10 } },
     preview,
     h('div', { style: { flex: 1, minWidth: 0 } },
-      h('div', { style: { fontSize: 13, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif' } }, item.name),
+      h('div', { style: { fontSize: 13, fontWeight: 700, color: '#E8DCC4', fontFamily: 'Fraunces, serif', display: 'flex', alignItems: 'center', gap: 6 } },
+        item.name,
+        item.premium ? h('span', { style: { fontSize: 9, fontWeight: 700, color: '#241A12', background: '#E0A93E', borderRadius: 4, padding: '1px 5px', letterSpacing: 0.3 } }, 'REAL MONEY') : null
+      ),
       h('div', { style: { fontSize: 10.5, color: '#8A7860', marginTop: 1 } }, item.desc)
     ),
     equipped
@@ -2300,6 +2321,11 @@ function StoreItemCard(props) {
       ? ((item.type === 'boost' || item.type === 'categoryBoost' || item.type === 'payTier')
           ? h('div', { style: { flexShrink: 0, fontSize: 10.5, color: '#9CC28A', fontWeight: 700, padding: '6px 10px' } }, 'Owned ✓')
           : h('button', { className: 'btn', onClick: () => onEquip(item.id), style: { flexShrink: 0, background: '#3A2C1D', border: '1px solid #5A4630', borderRadius: 6, padding: '6px 10px', color: '#E0A93E', fontSize: 11, fontWeight: 600, cursor: 'pointer' } }, 'Equip'))
+      : item.premium
+      ? h('button', {
+          className: 'btn', onClick: () => onBuyPremium(item.id),
+          style: { flexShrink: 0, background: '#6B4A2D', border: '1px solid #9C6B3A', borderRadius: 6, padding: '6px 10px', color: '#FFE8C9', fontSize: 11, fontWeight: 700, cursor: 'pointer' },
+        }, (iapPrices && iapPrices[item.id]) || 'Buy')
       : h('button', {
           className: 'btn', disabled: !affordable, onClick: () => onBuy(item.id),
           style: { flexShrink: 0, background: '#4A3D6B', border: '1px solid #6B5A9C', borderRadius: 6, padding: '6px 10px', color: '#E5D9FF', fontSize: 11, fontWeight: 600, cursor: affordable ? 'pointer' : 'not-allowed' },

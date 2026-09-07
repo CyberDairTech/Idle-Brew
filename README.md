@@ -23,8 +23,23 @@ This project uses [Capacitor](https://capacitorjs.com/) to wrap the game in a na
 - **Back button** navigates the game's own panels (Store, Recipe Book, etc.) before exiting the app, instead of the default WebView behavior.
 - **Status bar** is themed to match the game's dark brew palette.
 - **Haptic tap** feedback on the "tap for bonus" interaction.
+- **One real-money purchase** — "Double Production," via Google Play Billing. See below.
 
 All of this native-only behavior lives in `scripts/build-android-www.js`, which patches it into a copy of `index.html` — the game file itself stays a clean, dependency-free single page.
+
+### Real-money purchase (Double Production)
+
+Every other store item is bought with in-game prestige points. "Double Production" (`boost_double` in `STORE_ITEMS`) is the one exception — it's a real-money purchase via [Google Play Billing](https://developer.android.com/google/play/billing), wired up through [`cordova-plugin-purchase`](https://github.com/j3k0/cordova-plugin-purchase) (installed as a Cordova plugin — no extra native code to maintain, and no build step needed since it's picked up automatically by `cap sync`).
+
+- **`index.html`** just knows the item is `premium: true` and calls `window.IdleBrewIAP.purchase(itemId)` when tapped — it has no idea Play Billing exists. On the web version that global is never defined, so it shows a "only available in the Android app" toast instead.
+- **The actual Play Billing wiring** (product registration, purchase/verify/finish flow, granting ownership on success) is injected into `www/index.html` by `scripts/build-android-www.js`, same pattern as the other native-only touches.
+- **`iapProductId: 'double_production'`** on the STORE_ITEMS entry must exactly match the product ID you create in Play Console.
+
+**What you still need to do before this actually works:**
+
+1. Once you have a Play Developer account and have uploaded a signed build to at least an internal testing track (see below), go to **Play Console → your app → Monetize → Products → In-app products**, and create a product with ID **`double_production`** (must match exactly), a name, description, and price.
+2. **Real purchases can't be tested with the sideloaded debug APK.** Play Billing validates that the app was installed through Google Play, so you need to: upload a signed build to an internal testing track, add your own Google account as a license tester (Play Console → Setup → License testing), and install the app via the testing track's opt-in link. Test purchases made this way show a "test card, not charged" banner.
+3. This ships **without server-side receipt validation** (the plugin calls `.verify()` locally, which trusts the on-device receipt) — a reasonable trade-off for a single low-stakes cosmetic-ish upgrade, but it means a modified APK could in theory spoof ownership. If that becomes a concern later, the plugin supports plugging in a validation server (their own [Iaptic](https://www.iaptic.com) service, or a custom one) via `store.validator` — see the [cordova-plugin-purchase docs](https://github.com/j3k0/cordova-plugin-purchase).
 
 ### Automatic builds (no local setup needed)
 

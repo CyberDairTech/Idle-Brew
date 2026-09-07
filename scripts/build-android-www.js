@@ -132,6 +132,62 @@ const navBlock = `${navAnchor}
       AppPlugin.exitApp();
     });
     return () => { listenerPromise.then((h) => h.remove()).catch(() => {}); };
+  }, []);
+
+  // Real-money purchase (Google Play Billing, via cordova-plugin-purchase -
+  // exposed as window.CdvPurchase by the native Cordova/Capacitor bridge).
+  // IAP_PRODUCTS maps this game's STORE_ITEMS ids to Play Console product
+  // ids - keep in sync with STORE_ITEMS' iapProductId fields in index.html.
+  useEffect(() => {
+    if (!isNativeApp() || !window.CdvPurchase) return undefined;
+    try {
+      const { store, ProductType, Platform } = window.CdvPurchase;
+      const IAP_PRODUCTS = { boost_double: 'double_production' };
+      const itemIdForProduct = (productId) => Object.keys(IAP_PRODUCTS).find((k) => IAP_PRODUCTS[k] === productId);
+
+      store.register(Object.keys(IAP_PRODUCTS).map((itemId) => ({
+        id: IAP_PRODUCTS[itemId],
+        type: ProductType.NON_CONSUMABLE,
+        platform: Platform.GOOGLE_PLAY,
+      })));
+
+      store.when()
+        .productUpdated((p) => {
+          const itemId = itemIdForProduct(p.id);
+          if (itemId && p.pricing && p.pricing.price) {
+            setIapPrices((prev) => Object.assign({}, prev, { [itemId]: p.pricing.price }));
+          }
+        })
+        .approved((transaction) => transaction.verify())
+        .verified((receipt) => receipt.finish())
+        .finished((transaction) => {
+          (transaction.products || []).forEach((p) => {
+            const itemId = itemIdForProduct(p.id);
+            if (!itemId) return;
+            setState((prev) => prev && Object.assign({}, prev, {
+              store: Object.assign({}, prev.store, { owned: Object.assign({}, prev.store.owned, { [itemId]: true }) }),
+            }));
+          });
+        });
+
+      window.IdleBrewIAP = {
+        purchase(itemId) {
+          const productId = IAP_PRODUCTS[itemId];
+          const product = productId && store.get(productId);
+          const offer = product && product.getOffer && product.getOffer();
+          if (offer) {
+            offer.order().then((error) => { if (error) console.error('IAP order failed:', error); });
+          } else {
+            showToast("Couldn't start purchase - try again in a moment.", 'warn');
+          }
+        },
+      };
+
+      store.initialize([{ platform: Platform.GOOGLE_PLAY }]);
+    } catch (e) {
+      console.error('IAP init failed:', e);
+    }
+    return undefined;
   }, []);`;
 out = replaceOnce(out, navAnchor, navBlock, 'stateRef.current = state; (for back button handling)');
 
